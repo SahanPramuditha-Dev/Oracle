@@ -86,6 +86,21 @@ provider behavior. Gemini is optional and requires `GEMINI_API_KEY` only when
 * **`GET /api/v1/voice/voices`**: Lists all 54 available neural voice profiles and reports the active speech synthesis engine.
 * **`POST /api/v1/voice/transcribe`**: Local push-to-talk speech-to-text using Faster-Whisper with Silero VAD.
 
+### Voice models and libraries
+
+| Capability | Model/engine | Libraries and runtime |
+|---|---|---|
+| Speech-to-text | `Systran/faster-whisper-tiny.en` stored in `models/whisper-tiny.en` | `faster-whisper==1.2.1`, CTranslate2, PyAV (`av`) for audio decoding, NumPy, CPU `int8` inference |
+| Neural speech synthesis | Kokoro-82M ONNX: `models/voice/kokoro-v1.0.onnx` and `voices-v1.0.bin` | Optional `kokoro-onnx` and `soundfile`; used only when both model files and packages are available |
+| Windows speech fallback | Installed Windows SAPI voices | `pywin32==312` / `win32com`; no model download required |
+| Browser speech option | Browser-provided speech capability | Optional browser path; it is not the offline backend voice engine |
+
+Voice transcription is local-only, uses prepared files, and does not download
+models at runtime. Run `scripts/prepare_voice_model.py` to prepare the tiny
+English recognition model. Kokoro files are optional; without them, Windows
+uses SAPI when `pywin32` is available. The backend does not silently fall back
+to a cloud speech provider.
+
 ### Vision & People Recognition Endpoints
 
 See [people recognition and verification](docs/PEOPLE_RECOGNITION.md) for stable identity/sample storage, explicit categories, matching states and access boundaries. Face matches do not authorize access.
