@@ -58,6 +58,13 @@ The UI loads [Google Fonts](https://fonts.google.com/) (Inter and JetBrains
 Mono) from `fonts.googleapis.com` when network access is available. Replace
 these imports with locally hosted fonts if a fully offline build is required.
 
+The archived [`dormant.html`](dormant.html) page loads
+[Three.js r128](https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js)
+from cdnjs and uses the same Google Fonts. It is a standalone dormant visual
+page, not part of the Vite frontend runtime. Its CDN dependency is intentionally
+not bundled or pinned with an integrity attribute; use the current Vite
+dependency for maintained frontend work.
+
 ## Model assets and model providers
 
 Model files are downloaded into ignored local directories and are not included

@@ -15,6 +15,8 @@ provider APIs and downloaded assets have separate terms; see
 [third-party notices](THIRD_PARTY_NOTICES.md) before redistribution or
 commercial deployment. The notice also covers browser APIs, Google Fonts,
 Ollama, PostgreSQL, model providers and the pinned vision assets.
+The archived [dormant visual page](dormant.html) and its legacy CDN dependency
+are also recorded there.
 
 ## Homepage preview
 
