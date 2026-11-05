@@ -8,6 +8,13 @@ The backend and stored records are retained. This reconnection does not complete
 
 A zero-paid-service personal assistant in early development. The planned version combines local conversation, approved desktop actions, camera reading and explicitly saved memories.
 
+## License and third-party notices
+
+ORACLE source code is released under the [MIT License](LICENSE). Model files,
+provider APIs and downloaded assets have separate terms; see
+[third-party notices](THIRD_PARTY_NOTICES.md) before redistribution or
+commercial deployment.
+
 ## Homepage preview
 
 ![ORACLE Presence homepage](Screenshots/Img%201%20Homepage.png)
