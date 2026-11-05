@@ -13,7 +13,8 @@ A zero-paid-service personal assistant in early development. The planned version
 ORACLE source code is released under the [MIT License](LICENSE). Model files,
 provider APIs and downloaded assets have separate terms; see
 [third-party notices](THIRD_PARTY_NOTICES.md) before redistribution or
-commercial deployment.
+commercial deployment. The notice also covers browser APIs, Google Fonts,
+Ollama, PostgreSQL, model providers and the pinned vision assets.
 
 ## Homepage preview
 

@@ -48,6 +48,16 @@ These are declared in [`frontend/package.json`](frontend/package.json) and
 - [VAD Web](https://github.com/ricky0123/vad) — review the package license
 - [Playwright](https://github.com/microsoft/playwright) — Apache-2.0
 
+The frontend also uses standard browser platform APIs: `MediaDevices` for
+camera/microphone permission and capture, `AudioContext`/Web Audio for local
+audio levels and effects, `speechSynthesis` as an optional browser read-aloud
+path, and `fetch` for the same-origin backend connection. Browser permissions,
+vendor support and browser privacy policies apply.
+
+The UI loads [Google Fonts](https://fonts.google.com/) (Inter and JetBrains
+Mono) from `fonts.googleapis.com` when network access is available. Replace
+these imports with locally hosted fonts if a fully offline build is required.
+
 ## Model assets and model providers
 
 Model files are downloaded into ignored local directories and are not included
@@ -64,14 +74,22 @@ review the current model card, license and any commercial-use restrictions.
   model repository and license.
 - [Kokoro ONNX](https://github.com/thewh1teagle/kokoro-onnx) runtime and
   model assets, when optionally installed under `models/voice/`.
-- YOLOv8 ONNX exports and YOLO-World/CLIP assets downloaded by
-  [`scripts/prepare_vision_models.py`](scripts/prepare_vision_models.py) and
+- [YOLOv8n ONNX](https://github.com/ultralytics/assets) and the pinned
+  [YOLOv8n segmentation export](https://huggingface.co/unileon-robotics/YOLO8-ONNX)
+  are used for object detection and segmentation. Review [Ultralytics
+  licensing](https://www.ultralytics.com/license) and the individual export
+  terms before redistribution.
+- The optional YOLO-World/CLIP object path downloads
+  `yolov8s-worldv2.onnx`, `clip-text.onnx` and `clip-tokenizer.json` from the
+  pinned Hugging Face revisions in
   [`scripts/prepare_object_models.ps1`](scripts/prepare_object_models.ps1).
-  Review [Ultralytics licensing](https://www.ultralytics.com/license) and each
-  Hugging Face model card before redistribution.
-- OpenCV Zoo YuNet and SFace assets used for face detection and recognition.
-  Review the [OpenCV Zoo repository](https://github.com/opencv/opencv_zoo) and
-  each model's license before redistribution.
+  Review the [YOLO-World export](https://huggingface.co/Instemic/yolo-world-onnx)
+  and [CLIP model card](https://huggingface.co/Xenova/clip-vit-base-patch32)
+  before redistribution.
+- [OpenCV Zoo YuNet](https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet)
+  and [SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface)
+  assets are used for face detection and recognition. Review each model's
+  license and OpenCV Zoo terms before redistribution.
 
 ## External APIs and services
 
@@ -80,12 +98,19 @@ limit and privacy terms:
 
 - [Google Gemini API](https://ai.google.dev/gemini-api/docs) — Google API
   terms, model terms, quota and pricing apply when enabled.
-- [Google OAuth, Calendar API and Tasks API](https://developers.google.com/workspace)
-  — Google API Services User Data Policy and OAuth consent requirements apply.
+- [Google OAuth, OpenID Connect UserInfo, Calendar API and Tasks API](https://developers.google.com/workspace)
+  — Google API Services User Data Policy, OAuth consent requirements and
+  requested-scope restrictions apply. ORACLE uses Google's authorization,
+  token, revoke and UserInfo endpoints in addition to Calendar and Tasks.
 - [Wikipedia MediaWiki API](https://www.mediawiki.org/wiki/API:Main_page) —
   follow Wikimedia API and content attribution requirements.
 - [SearXNG](https://docs.searxng.org/) — the configured local instance and its
   upstream search engines determine applicable terms and rate limits.
+- [Ollama API](https://github.com/ollama/ollama/blob/main/docs/api.md) — local
+  loopback `/api/chat`, `/api/generate`, `/api/tags`, `/api/version` and
+  `/api/ps` endpoints are used; Ollama model terms remain separate.
+- [PostgreSQL](https://www.postgresql.org/about/licence/) — local durable
+  records use PostgreSQL through Psycopg and SQLAlchemy.
 
 ## Attribution and compliance checklist
 
