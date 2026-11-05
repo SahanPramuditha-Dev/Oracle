@@ -1,0 +1,30 @@
+# Local environments and downloaded installers
+.setup/
+.venv/
+backend/.venv/
+node_modules/
+dist/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+backend/google-client.json
+backend/firebase-admin.json
+.env.*
+!.env.example
+
+# Private runtime data, models and recovery snapshots
+data/
+models/
+archive/
+*.log
+test-results/
+playwright-report/
+
+# Editor and operating system files
+.DS_Store
+Thumbs.db
+# Locally downloaded public inference weights (recreate with prepare_vision_models.py)
+frontend/public/models/
+
+frontend/output/playwright/

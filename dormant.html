@@ -1,0 +1,828 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ORACLE AI — Dormant Mode</title>
+  <meta name="theme-color" content="#0C0E11" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600&family=JetBrains+Mono:wght@200;300;400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg-color: #0C0E11;
+      --bg-gradient: #161A20;
+      --text-primary: #E8EBEF;
+      --text-secondary: #AAB4C2;
+      --accent-rings: #CFD8E4;
+      --accent-active: #9DB4D3; /* Muted steel-blue */
+      --orb-dots: #DFE5EC;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-color);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      background: radial-gradient(circle at 50% 50%, var(--bg-gradient) 0%, var(--bg-color) 100%);
+    }
+
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+      cursor: default;
+    }
+
+    #webgl-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .ambient-vignette {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: radial-gradient(circle at 50% 50%, transparent 55%, rgba(12, 14, 17, 0.72) 100%);
+      z-index: 1;
+    }
+
+    .ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 2.4rem 3.0rem;
+      pointer-events: none;
+    }
+
+    .dormant-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      pointer-events: auto;
+      transition: opacity 0.8s ease;
+    }
+
+    .wordmark {
+      font-family: var(--font-sans);
+      font-size: 0.82rem;
+      font-weight: 400;
+      letter-spacing: 0.38em;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      opacity: 0.92;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: 9999px;
+      background: rgba(12, 14, 17, 0.45);
+      border: 1px solid rgba(207, 216, 228, 0.12);
+      backdrop-filter: blur(8px);
+      transition: all 0.4s ease;
+    }
+
+    .status-badge--active {
+      border-color: rgba(157, 180, 211, 0.35);
+      background: rgba(157, 180, 211, 0.08);
+    }
+
+    .status-dot {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background-color: var(--text-secondary);
+      animation: pulse-dot 6s ease-in-out infinite;
+      opacity: 0.75;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 0.45; transform: scale(0.9); }
+      50% { opacity: 0.85; transform: scale(1.15); }
+    }
+
+    .status-dot--active {
+      background-color: var(--accent-active);
+      box-shadow: 0 0 8px rgba(157, 180, 211, 0.65);
+      animation: pulse-active 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse-active {
+      0%, 100% { opacity: 0.65; transform: scale(1.0); }
+      50% { opacity: 1.0; transform: scale(1.25); }
+    }
+
+    .status-label {
+      font-family: var(--font-mono);
+      font-size: 0.66rem;
+      font-weight: 300;
+      letter-spacing: 0.26em;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      opacity: 0.8;
+    }
+
+    .status-label--active {
+      color: var(--accent-active);
+      font-weight: 400;
+      opacity: 1;
+    }
+
+    .dormant-center {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .dormant-footer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      width: 100%;
+      padding-bottom: 0.8rem;
+      text-align: center;
+    }
+
+    .digital-clock {
+      font-family: var(--font-sans);
+      font-size: clamp(3.2rem, 5.5vw, 4.6rem);
+      font-weight: 100;
+      letter-spacing: 0.08em;
+      color: var(--text-primary);
+      line-height: 1.0;
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 0.35rem;
+      text-shadow: 0 0 32px rgba(232, 235, 239, 0.03);
+      transition: opacity 0.8s ease;
+    }
+
+    .clock-digits {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .clock-seconds {
+      font-family: var(--font-mono);
+      font-size: 0.38em;
+      font-weight: 200;
+      color: var(--text-secondary);
+      opacity: 0.7;
+      letter-spacing: 0.05em;
+      margin-left: 0.2rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .date-label {
+      font-family: var(--font-mono);
+      font-size: 0.70rem;
+      font-weight: 300;
+      letter-spacing: 0.28em;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      transition: opacity 0.8s ease;
+    }
+
+    .waveform-container {
+      width: 320px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0.15rem 0;
+      transition: opacity 0.8s ease;
+    }
+
+    .waveform-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .interaction-hint-btn {
+      background: transparent;
+      border: 1px solid rgba(207, 216, 228, 0.15);
+      border-radius: 9999px;
+      padding: 0.42rem 1.1rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      pointer-events: auto;
+      backdrop-filter: blur(8px);
+      outline: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-family: var(--font-sans);
+      font-size: 0.72rem;
+      font-weight: 300;
+      letter-spacing: 0.18em;
+      transition: all 0.3s ease;
+    }
+
+    .interaction-hint-btn:hover {
+      border-color: rgba(207, 216, 228, 0.32);
+      background-color: rgba(207, 216, 228, 0.05);
+    }
+
+    .interaction-hint-btn--active {
+      border-color: rgba(157, 180, 211, 0.4);
+      background-color: rgba(157, 180, 211, 0.08);
+      color: var(--accent-active);
+    }
+
+    .hint-kbd {
+      font-family: var(--font-mono);
+      font-size: 0.58rem;
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      background: rgba(207, 216, 228, 0.12);
+      border: 1px solid rgba(207, 216, 228, 0.22);
+      color: var(--text-secondary);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 640px) {
+      .ui-overlay { padding: 1.5rem 1.6rem; }
+      .digital-clock { font-size: 2.8rem; }
+      .waveform-container { width: 240px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .status-dot, .status-dot--active { animation: none !important; }
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div id="webgl-container"></div>
+    <div class="ambient-vignette"></div>
+
+    <main class="ui-overlay" role="main">
+      <header class="dormant-header" id="header-el">
+        <div class="wordmark" aria-label="Oracle Assistant">ORACLE</div>
+        <div class="status-badge" id="status-badge-el" aria-label="System Status">
+          <span class="status-dot" id="status-dot-el"></span>
+          <span class="status-label" id="status-label-el">DORMANT</span>
+        </div>
+      </header>
+
+      <div class="dormant-center" aria-hidden="true"></div>
+
+      <footer class="dormant-footer">
+        <div class="digital-clock" id="clock-display" aria-label="Current Time">
+          <span class="clock-digits" id="clock-time">00:00</span>
+          <span class="clock-seconds" id="clock-seconds">00</span>
+        </div>
+
+        <div class="date-label" id="date-display" aria-label="Current Date">
+          WEDNESDAY, NOVEMBER 4, 2026
+        </div>
+
+        <div class="waveform-container" id="waveform-wrap" aria-label="Audio Waveform Status">
+          <canvas class="waveform-canvas" id="waveform-canvas"></canvas>
+        </div>
+
+        <button type="button" class="interaction-hint-btn" id="interaction-hint" role="status">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg>
+          <span id="hint-text">Tap anywhere or press Space to wake</span>
+          <span class="hint-kbd" id="hint-kbd">SPACE</span>
+        </button>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    // State machine: dormant <-> ready
+    let currentState = 'dormant'; // 'dormant' | 'ready' | 'listening'
+    let stateParams = {
+      orbBrightness: 0.55,
+      accentMix: 0.0,
+      ringOpacity: 0.12,
+      shellOpacity: 0.035,
+      uiHeaderOpacity: 0.0,
+      clockOpacity: 0.38,
+      dateOpacity: 0.0,
+      waveformOpacity: 0.0,
+      waveformAmp: 0.5
+    };
+    let targetParams = { ...stateParams };
+    let inactivityTimer = null;
+
+    function applyState(nextState) {
+      currentState = nextState;
+      if (nextState === 'dormant') {
+        targetParams = {
+          orbBrightness: 0.55,
+          accentMix: 0.0,
+          ringOpacity: 0.12,
+          shellOpacity: 0.035,
+          uiHeaderOpacity: 0.0,
+          clockOpacity: 0.38,
+          dateOpacity: 0.0,
+          waveformOpacity: 0.0,
+          waveformAmp: 0.5
+        };
+      } else if (nextState === 'ready') {
+        targetParams = {
+          orbBrightness: 0.82,
+          accentMix: 0.15,
+          ringOpacity: 0.18,
+          shellOpacity: 0.05,
+          uiHeaderOpacity: 1.0,
+          clockOpacity: 1.0,
+          dateOpacity: 0.85,
+          waveformOpacity: 0.35,
+          waveformAmp: 1.2
+        };
+        resetInactivity();
+      } else if (nextState === 'listening') {
+        targetParams = {
+          orbBrightness: 1.0,
+          accentMix: 0.85,
+          ringOpacity: 0.22,
+          shellOpacity: 0.065,
+          uiHeaderOpacity: 1.0,
+          clockOpacity: 0.85,
+          dateOpacity: 0.8,
+          waveformOpacity: 0.95,
+          waveformAmp: 4.5
+        };
+        resetInactivity();
+      }
+
+      // UI elements
+      const headerEl = document.getElementById('header-el');
+      const dateEl = document.getElementById('date-display');
+      const clockEl = document.getElementById('clock-display');
+      const waveEl = document.getElementById('waveform-wrap');
+      const hintText = document.getElementById('hint-text');
+      const hintBtn = document.getElementById('interaction-hint');
+      const statusLabel = document.getElementById('status-label-el');
+      const statusBadge = document.getElementById('status-badge-el');
+      const statusDot = document.getElementById('status-dot-el');
+
+      if (statusLabel) statusLabel.textContent = nextState.toUpperCase();
+      if (nextState === 'dormant') {
+        if (headerEl) headerEl.style.opacity = '0';
+        if (dateEl) dateEl.style.opacity = '0';
+        if (clockEl) clockEl.style.opacity = '0.38';
+        if (waveEl) waveEl.style.opacity = '0';
+        if (hintText) hintText.textContent = 'Tap anywhere or press Space to wake';
+        if (hintBtn) hintBtn.classList.remove('interaction-hint-btn--active');
+        if (statusBadge) statusBadge.classList.remove('status-badge--active');
+        if (statusDot) statusDot.classList.remove('status-dot--active');
+      } else {
+        if (headerEl) headerEl.style.opacity = '1';
+        if (dateEl) dateEl.style.opacity = '0.85';
+        if (clockEl) clockEl.style.opacity = '1';
+        if (waveEl) waveEl.style.opacity = '0.75';
+        if (hintBtn) hintBtn.classList.add('interaction-hint-btn--active');
+        if (statusBadge) statusBadge.classList.add('status-badge--active');
+        if (statusDot) statusDot.classList.add('status-dot--active');
+        if (hintText) hintText.textContent = nextState === 'listening' ? 'Listening...' : 'Awaiting input...';
+      }
+    }
+
+    function resetInactivity() {
+      if (inactivityTimer) clearTimeout(inactivityTimer);
+      // 30 seconds inactivity timeout per Aura reference spec
+      inactivityTimer = setTimeout(() => {
+        applyState('dormant');
+      }, 30000);
+    }
+
+    // --- Clock Controller ---
+    function initClock() {
+      const clockTime = document.getElementById('clock-time');
+      const clockSeconds = document.getElementById('clock-seconds');
+      const dateDisplay = document.getElementById('date-display');
+
+      function update() {
+        const now = new Date();
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+
+        if (clockTime) clockTime.textContent = `${h}:${m}`;
+        if (clockSeconds) clockSeconds.textContent = s;
+
+        if (dateDisplay) {
+          const opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+          dateDisplay.textContent = now.toLocaleDateString('en-US', opts).toUpperCase();
+        }
+      }
+
+      update();
+      setInterval(update, 1000);
+    }
+
+    // --- Waveform Controller ---
+    let waveformDrawFn = null;
+    function initWaveform() {
+      const canvas = document.getElementById('waveform-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = Math.floor((rect.width || 320) * dpr);
+        canvas.height = Math.floor((rect.height || 28) * dpr);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
+      }
+      resize();
+      window.addEventListener('resize', resize);
+
+      const startTime = performance.now();
+      waveformDrawFn = function(now) {
+        if (stateParams.waveformOpacity <= 0.02) return;
+        const time = (now - startTime) * 0.001;
+        const rect = canvas.getBoundingClientRect();
+        const width = rect.width || 320;
+        const height = rect.height || 28;
+        const centerY = height / 2;
+
+        ctx.clearRect(0, 0, width, height);
+        ctx.beginPath();
+
+        const maxAmp = stateParams.waveformAmp;
+        for (let x = 0; x <= width; x += 2) {
+          const normX = (x / width) * 2.0 - 1.0;
+          const env = Math.exp(-normX * normX * 3.0);
+          const w1 = Math.sin(x * 0.038 + time * 1.5);
+          const w2 = Math.sin(x * 0.076 - time * 0.95) * 0.5;
+          const y = centerY + (w1 + w2) * maxAmp * env;
+
+          if (x === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+
+        const gradient = ctx.createLinearGradient(0, 0, width, 0);
+        const alpha = stateParams.waveformOpacity;
+        gradient.addColorStop(0.0, 'rgba(207, 216, 228, 0.0)');
+        gradient.addColorStop(0.25, `rgba(207, 216, 228, ${0.35 * alpha})`);
+        gradient.addColorStop(0.5, `rgba(223, 229, 236, ${0.85 * alpha})`);
+        gradient.addColorStop(0.75, `rgba(207, 216, 228, ${0.35 * alpha})`);
+        gradient.addColorStop(1.0, 'rgba(207, 216, 228, 0.0)');
+
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 1.0;
+        ctx.stroke();
+      };
+    }
+
+    // --- 3D Scene Controller ---
+    function init3D() {
+      const container = document.getElementById('webgl-container');
+      if (!container || !window.THREE) return;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0C0E11);
+
+      const width = container.clientWidth || window.innerWidth;
+      const height = container.clientHeight || window.innerHeight;
+
+      const camera = new THREE.PerspectiveCamera(45, width / height, 1, 1000);
+      camera.position.set(0, 0, 180);
+
+      const renderer = new THREE.WebGLRenderer({ powerPreference: 'low-power', antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(width, height);
+      renderer.domElement.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;display:block;';
+      container.appendChild(renderer.domElement);
+
+      const orbGroup = new THREE.Group();
+      scene.add(orbGroup);
+
+      function calcRadius() {
+        const visH = 2.0 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 180;
+        return (visH * 0.185) / 2.0;
+      }
+      let baseOrbRadius = calcRadius();
+
+      // 1. Dotted Sphere: 2,400 points Fibonacci lattice
+      const count = 2400;
+      const positions = new Float32Array(count * 3);
+      const baseColors = new Float32Array(count * 3);
+      const accentColors = new Float32Array(count * 3);
+      const noisePhases = new Float32Array(count);
+
+      const cPrimary = new THREE.Color('#DFE5EC');
+      const cSecondary = new THREE.Color('#AAB4C2');
+      const cAccent = new THREE.Color('#9DB4D3');
+      const goldenAngle = Math.PI * (3.0 - Math.sqrt(5.0));
+
+      for (let i = 0; i < count; i++) {
+        const y = 1.0 - (i / (count - 1.0)) * 2.0;
+        const rAtY = Math.sqrt(Math.max(0.0, 1.0 - y * y));
+        const theta = goldenAngle * i;
+
+        positions[i * 3 + 0] = Math.cos(theta) * rAtY;
+        positions[i * 3 + 1] = y;
+        positions[i * 3 + 2] = Math.sin(theta) * rAtY;
+
+        const mixRatio = Math.sin(i * 0.23) * 0.5 + 0.5;
+        const dotBase = cPrimary.clone().lerp(cSecondary, mixRatio * 0.45);
+        baseColors[i * 3 + 0] = dotBase.r;
+        baseColors[i * 3 + 1] = dotBase.g;
+        baseColors[i * 3 + 2] = dotBase.b;
+
+        accentColors[i * 3 + 0] = cAccent.r;
+        accentColors[i * 3 + 1] = cAccent.g;
+        accentColors[i * 3 + 2] = cAccent.b;
+
+        noisePhases[i] = Math.random() * Math.PI * 2.0;
+      }
+
+      const sphereGeo = new THREE.BufferGeometry();
+      sphereGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      sphereGeo.setAttribute('aBaseColor', new THREE.BufferAttribute(baseColors, 3));
+      sphereGeo.setAttribute('aAccentColor', new THREE.BufferAttribute(accentColors, 3));
+      sphereGeo.setAttribute('aNoisePhase', new THREE.BufferAttribute(noisePhases, 1));
+
+      const orbMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uOrbRadius: { value: baseOrbRadius },
+          uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
+          uBrightness: { value: 0.55 },
+          uAccentMix: { value: 0.0 }
+        },
+        vertexShader: `
+          attribute vec3 aBaseColor;
+          attribute vec3 aAccentColor;
+          attribute float aNoisePhase;
+          varying vec3 vColor;
+          varying float vDepthFactor;
+          uniform float uTime;
+          uniform float uOrbRadius;
+          uniform float uPixelRatio;
+          uniform float uBrightness;
+          uniform float uAccentMix;
+
+          void main() {
+            vColor = mix(aBaseColor, aAccentColor, uAccentMix) * uBrightness;
+            float breath = 1.0 + 0.016 * sin(uTime * (2.0 * 3.14159265 / 10.0));
+            float noise = 0.0025 * sin(position.x * 3.5 + aNoisePhase + uTime * 0.45);
+
+            vec3 transformed = position * (breath + noise) * uOrbRadius;
+            vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+            gl_Position = projectionMatrix * mvPosition;
+
+            vec3 viewNormal = normalize(normalMatrix * position);
+            vDepthFactor = viewNormal.z;
+            gl_PointSize = 2.15 * uPixelRatio * (165.0 / -mvPosition.z);
+          }
+        `,
+        fragmentShader: `
+          varying vec3 vColor;
+          varying float vDepthFactor;
+
+          void main() {
+            vec2 coord = gl_PointCoord - vec2(0.5);
+            float dist = length(coord);
+            if (dist > 0.5) discard;
+            float circleMask = smoothstep(0.5, 0.32, dist);
+
+            float depthNorm = clamp((vDepthFactor + 0.85) / 1.85, 0.0, 1.0);
+            float brightness = mix(0.38, 1.0, depthNorm);
+            float alpha = mix(0.35, 0.95, depthNorm) * circleMask;
+
+            gl_FragColor = vec4(vColor * brightness, alpha);
+          }
+        `,
+        transparent: true,
+        depthWrite: false
+      });
+
+      const orbPoints = new THREE.Points(sphereGeo, orbMat);
+      orbGroup.add(orbPoints);
+
+      // 2. Orbital Rings
+      const ringColor = new THREE.Color('#CFD8E4');
+      const ring1Group = new THREE.Group();
+      ring1Group.rotation.set(THREE.MathUtils.degToRad(62), THREE.MathUtils.degToRad(18), THREE.MathUtils.degToRad(10));
+      const r1Major = baseOrbRadius * 1.48, r1Minor = baseOrbRadius * 1.36;
+      const r1Pts = [];
+      for (let i = 0; i <= 180; i++) {
+        const a = (i / 180) * Math.PI * 2;
+        r1Pts.push(new THREE.Vector3(Math.cos(a) * r1Major, Math.sin(a) * r1Minor, 0));
+      }
+      const ring1Mat = new THREE.LineBasicMaterial({ color: ringColor, transparent: true, opacity: 0.12, depthWrite: false });
+      ring1Group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(r1Pts), ring1Mat));
+      const m1 = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array([r1Major, 0, 0]), 3)), new THREE.PointsMaterial({ color: ringColor, size: 2.8, transparent: true, opacity: 0.45, depthWrite: false }));
+      ring1Group.add(m1);
+      orbGroup.add(ring1Group);
+
+      const ring2Group = new THREE.Group();
+      ring2Group.rotation.set(THREE.MathUtils.degToRad(-54), THREE.MathUtils.degToRad(-34), THREE.MathUtils.degToRad(42));
+      const r2Major = baseOrbRadius * 1.76, r2Minor = baseOrbRadius * 1.58;
+      const r2Pts = [];
+      for (let i = 0; i <= 180; i++) {
+        const a = (i / 180) * Math.PI * 2;
+        r2Pts.push(new THREE.Vector3(Math.cos(a) * r2Major, Math.sin(a) * r2Minor, 0));
+      }
+      const ring2Mat = new THREE.LineBasicMaterial({ color: ringColor, transparent: true, opacity: 0.10, depthWrite: false });
+      ring2Group.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(r2Pts), ring2Mat));
+      const m2 = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(new Float32Array([r2Major, 0, 0]), 3)), new THREE.PointsMaterial({ color: new THREE.Color('#AAB4C2'), size: 2.6, transparent: true, opacity: 0.40, depthWrite: false }));
+      ring2Group.add(m2);
+      orbGroup.add(ring2Group);
+
+      // 3. Geometric Shell
+      const shellGeo = new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(baseOrbRadius * 1.16, 1));
+      const shellMat = new THREE.LineBasicMaterial({ color: ringColor, transparent: true, opacity: 0.035, depthWrite: false });
+      const shellMesh = new THREE.LineSegments(shellGeo, shellMat);
+      orbGroup.add(shellMesh);
+
+      // 4. Ambient Dust (200-300 particles across 3 layers)
+      function makeDust(count, spreadX, spreadY, minZ, maxZ, size, opacity, hex) {
+        const pos = new Float32Array(count * 3);
+        for (let i = 0; i < count; i++) {
+          pos[i * 3 + 0] = (Math.random() - 0.5) * spreadX;
+          pos[i * 3 + 1] = (Math.random() - 0.5) * spreadY;
+          pos[i * 3 + 2] = minZ + Math.random() * (maxZ - minZ);
+        }
+        const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        const mat = new THREE.PointsMaterial({ color: new THREE.Color(hex), size, transparent: true, opacity, depthWrite: false });
+        return new THREE.Points(geo, mat);
+      }
+      const dustFar = makeDust(130, 450, 350, -450, -250, 0.95, 0.09, '#CFD8E4');
+      const dustMid = makeDust(90, 380, 280, -150, 20, 1.25, 0.16, '#AAB4C2');
+      const dustNear = makeDust(45, 300, 200, 30, 200, 1.6, 0.22, '#DFE5EC');
+      scene.add(dustFar);
+      scene.add(dustMid);
+      scene.add(dustNear);
+
+      // Parallax
+      let targetX = 0, targetY = 0, curX = 0, curY = 0;
+      window.addEventListener('pointermove', (e) => {
+        targetX = (e.clientX - window.innerWidth / 2) / (window.innerWidth / 2);
+        targetY = (e.clientY - window.innerHeight / 2) / (window.innerHeight / 2);
+        resetInactivity();
+      });
+      document.addEventListener('mouseleave', () => { targetX = 0; targetY = 0; });
+
+      // Resize
+      function onResize() {
+        const w = container.clientWidth || window.innerWidth;
+        const h = container.clientHeight || window.innerHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+        baseOrbRadius = calcRadius();
+        orbMat.uniforms.uOrbRadius.value = baseOrbRadius;
+      }
+      window.addEventListener('resize', onResize);
+
+      // Loop
+      const clock = new THREE.Clock();
+      let isVisible = true;
+      document.addEventListener('visibilitychange', () => { isVisible = !document.hidden; });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        if (!isVisible) return;
+
+        const dt = Math.min(clock.getDelta(), 0.1);
+        const time = clock.getElapsedTime();
+
+        // Parameter lerp (~600-900ms transition rate)
+        const lerpRate = 1.0 - Math.pow(1.0 - 0.08, dt * 60);
+        for (const k in targetParams) {
+          stateParams[k] += (targetParams[k] - stateParams[k]) * lerpRate;
+        }
+
+        // Apply interpolated parameters to 3D elements
+        orbMat.uniforms.uTime.value = time;
+        orbMat.uniforms.uBrightness.value = stateParams.orbBrightness;
+        orbMat.uniforms.uAccentMix.value = stateParams.accentMix;
+
+        ring1Mat.opacity = stateParams.ringOpacity;
+        ring2Mat.opacity = stateParams.ringOpacity * 0.85;
+        shellMat.opacity = stateParams.shellOpacity;
+
+        orbPoints.rotation.y += 0.02 * dt;
+        orbPoints.rotation.x = Math.sin(time * 0.06) * 0.015;
+
+        ring1Group.rotation.z += 0.00035 * dt * 60;
+        ring2Group.rotation.z -= 0.00028 * dt * 60;
+
+        const u1 = (time * 0.08) % (Math.PI * 2);
+        m1.position.set(Math.cos(u1) * r1Major, Math.sin(u1) * r1Minor, 0);
+
+        const u2 = (-time * 0.065) % (Math.PI * 2);
+        m2.position.set(Math.cos(u2) * r2Major, Math.sin(u2) * r2Minor, 0);
+
+        shellMesh.rotation.y -= 0.012 * dt;
+
+        curX += (targetX - curX) * 0.045;
+        curY += (targetY - curY) * 0.045;
+
+        camera.position.x = THREE.MathUtils.clamp(curX * 5.0, -5.0, 5.0);
+        camera.position.y = THREE.MathUtils.clamp(-curY * 4.0, -4.0, 4.0);
+        camera.lookAt(0, 0, 0);
+
+        dustNear.position.x = curX * 14.0;
+        dustNear.position.y = -curY * 10.0;
+        dustMid.position.x = curX * 6.0;
+        dustMid.position.y = -curY * 4.5;
+        dustFar.position.x = curX * 2.0;
+        dustFar.position.y = -curY * 1.5;
+
+        renderer.render(scene, camera);
+        if (waveformDrawFn) waveformDrawFn(performance.now());
+      }
+
+      animate();
+    }
+
+    // Wake and Interaction handlers
+    function initInteractions() {
+      function triggerWake() {
+        if (currentState === 'dormant') {
+          applyState('ready');
+        } else {
+          applyState('listening');
+        }
+      }
+
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          triggerWake();
+        } else if (e.key === '1') {
+          applyState('dormant');
+        } else if (e.key === '2') {
+          applyState('ready');
+        } else if (e.key === '3') {
+          applyState('listening');
+        }
+      });
+
+      document.getElementById('app').addEventListener('click', (e) => {
+        if (currentState === 'dormant') {
+          triggerWake();
+        }
+      });
+
+      const hintBtn = document.getElementById('interaction-hint');
+      if (hintBtn) {
+        hintBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          triggerWake();
+        });
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      initClock();
+      initWaveform();
+      init3D();
+      initInteractions();
+      applyState('dormant');
+    });
+  </script>
+</body>
+</html>
