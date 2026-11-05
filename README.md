@@ -46,6 +46,41 @@ GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.1-flash-lite-preview
 ```
 
+### Model downloads and local connections
+
+Runtime model files and credentials are intentionally excluded from Git. Set
+up only the providers and models needed for the workflow you want:
+
+```powershell
+# Optional local text and vision chat models
+ollama pull qwen2.5:1.5b
+ollama pull moondream
+
+# Optional local ONNX vision models (from the repository root)
+.\backend\.venv\Scripts\python.exe .\scripts\prepare_vision_models.py
+.\scripts\prepare_object_models.ps1
+
+# Optional local English speech-to-text model
+.\backend\.venv\Scripts\python.exe .\scripts\prepare_voice_model.py
+```
+
+The Ollama service must be available at `http://127.0.0.1:11434` when
+`AI_PROVIDER=ollama`. The development launcher starts Ollama when it is
+installed and not already running. Local inference assets are stored under
+`models/` and are never downloaded automatically by backend requests.
+
+For Google Calendar, Tasks and timed-reminder access, configure the ignored
+`backend/google-client.json`, enable the required APIs and complete the OAuth
+flow from **Workspace → Google**. Follow the [Google Workspace connection
+guide](docs/GOOGLE_WORKSPACE_CONNECTION.md); credentials and refresh tokens
+are stored locally and are not committed.
+
+Research search is local by default. If a local SearXNG instance is available,
+set `ORACLE_SEARXNG_URL` in `backend/.env` and enable its JSON format. See
+[Phase 8 research](docs/PHASE_8_RESEARCH.md) for the adapter limits and
+provider behavior. Gemini is optional and requires `GEMINI_API_KEY` only when
+`AI_PROVIDER=gemini` and `GEMINI_ENABLED=true`.
+
 ### Natural Voice & Speech Endpoints
 * **`POST /api/v1/voice/speak`**: Generates high-fidelity, emotional, and human-like speech from text using local **Kokoro-82M** ONNX (`af_heart`, `af_bella`, `am_adam`, etc.) with automatic fallback to Windows SAPI. Accepts optional `voice` and `speed` parameters.
 * **`GET /api/v1/voice/voices`**: Lists all 54 available neural voice profiles and reports the active speech synthesis engine.
