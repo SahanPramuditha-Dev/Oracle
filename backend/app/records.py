@@ -6,7 +6,8 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 from sqlalchemy import select, insert, update, delete, func
-from .database import configured_url, database_engine, migrate, tasks as task_table, notes as note_table, locks
+from sqlalchemy.engine import URL
+from .database import ROOT, configured_url, database_engine, migrate, tasks as task_table, notes as note_table, locks
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -76,7 +77,14 @@ class Records:
 
     @classmethod
     def from_env(cls):
-        return cls(configured_url())
+        url = configured_url()
+        try:
+            return cls(url)
+        except Exception:
+            sqlite_url = URL.create('sqlite', database=str(ROOT / 'data/oracle.sqlite3'))
+            if str(url) != str(sqlite_url):
+                return cls(sqlite_url)
+            raise
 
     @contextmanager
     def connect(self, write=False, resource=None):
@@ -96,11 +104,14 @@ class Records:
     def now():
         return int(time.time() * 1000)
 
-    def tasks(self):
+    def tasks(self, due_only: bool = False):
         now = self.now()
+        query = select(task_table).order_by(task_table.c.due, task_table.c.id)
+        if due_only:
+            query = query.where(task_table.c.due <= now)
         with self.connect() as db:
             return [dict(row) | {'state': 'alert' if row['due'] <= now else 'pending'}
-                    for row in db.execute(select(task_table).order_by(task_table.c.due, task_table.c.id)).mappings()]
+                    for row in db.execute(query).mappings()]
 
     def add_task(self, body: TaskInput):
         now = self.now()
@@ -173,8 +184,8 @@ def records_router(records: Records):
     router = APIRouter(prefix='/api/v1')
 
     @router.get('/tasks')
-    def tasks():
-        return {'tasks': records.tasks(), 'server_time': records.now()}
+    def tasks(due_only: bool = False):
+        return {'tasks': records.tasks(due_only=due_only), 'server_time': records.now()}
 
     @router.post('/tasks', status_code=201)
     def add_task(body: TaskInput):

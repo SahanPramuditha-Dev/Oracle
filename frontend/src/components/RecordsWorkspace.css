@@ -1,0 +1,1050 @@
+/* ==========================================================================
+   Records Workspace — Oracle Obsidian Glass Architecture
+   Cyber-Minimalist Aerospace Vault for Notes, Timers, Memories & Integrations
+   ========================================================================== */
+
+/* Modal Backdrop */
+.records-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 7, 12, 0.76);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  padding: 24px;
+}
+
+/* Master Dialog Container */
+.records-modal-dialog {
+  width: 900px;
+  max-width: min(900px, calc(100vw - 32px));
+  height: 640px;
+  max-height: min(88vh, 680px);
+  background: linear-gradient(180deg, rgba(14, 18, 25, 0.94) 0%, rgba(9, 12, 17, 0.97) 100%);
+  border: 1px solid rgba(232, 235, 239, 0.09);
+  border-radius: 18px;
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--fg);
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  user-select: none;
+}
+
+/* Master Top Ribbon */
+.workspace-top-ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 22px 13px 22px;
+  border-bottom: 1px solid rgba(232, 235, 239, 0.06);
+  background: rgba(232, 235, 239, 0.015);
+  flex-shrink: 0;
+}
+
+.workspace-ribbon-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.workspace-section-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  color: #e8ebef;
+  text-transform: uppercase;
+}
+
+.workspace-tag-icon {
+  color: var(--accent);
+}
+
+.workspace-ribbon-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  background: rgba(157, 180, 211, 0.08);
+  border: 1px solid rgba(157, 180, 211, 0.2);
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.workspace-ribbon-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.22);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: #4ade80;
+  text-transform: uppercase;
+}
+
+.workspace-status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px #22c55e;
+}
+
+/* Aerospace Icon Buttons */
+.workspace-icon-btn {
+  background: rgba(232, 235, 239, 0.04);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  color: var(--muted);
+  width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  max-height: 30px !important;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  padding: 0;
+  outline: none;
+}
+
+.workspace-icon-btn:hover {
+  background: rgba(232, 235, 239, 0.08);
+  border-color: rgba(232, 235, 239, 0.18);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.workspace-icon-btn:active {
+  transform: translateY(0);
+}
+
+.workspace-icon-btn.workspace-close:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.workspace-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Category Navigation Ribbon (matching Oracle Pill Chips) */
+.workspace-nav-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 22px;
+  background: rgba(10, 13, 18, 0.5);
+  border-bottom: 1px solid rgba(232, 235, 239, 0.06);
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.workspace-nav-bar::-webkit-scrollbar {
+  height: 0px;
+  display: none;
+}
+
+.workspace-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  padding: 0 14px;
+  border-radius: 9999px;
+  background: rgba(232, 235, 239, 0.03);
+  border: 1px solid rgba(232, 235, 239, 0.07);
+  color: rgba(232, 235, 239, 0.62);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  outline: none;
+}
+
+.workspace-tab-btn:hover {
+  background: rgba(157, 180, 211, 0.09);
+  border-color: rgba(157, 180, 211, 0.24);
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.workspace-tab-btn.active,
+.workspace-tab-btn[aria-pressed="true"] {
+  background: rgba(157, 180, 211, 0.16);
+  border-color: rgba(157, 180, 211, 0.38);
+  color: #ffffff;
+  box-shadow: 0 0 16px rgba(157, 180, 211, 0.15);
+  transform: none;
+}
+
+.workspace-tab-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: rgba(232, 235, 239, 0.06);
+  border: 1px solid rgba(232, 235, 239, 0.09);
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.workspace-tab-btn.active .workspace-tab-badge {
+  background: rgba(34, 197, 94, 0.14);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+}
+
+/* Master Body Pane */
+.workspace-body-pane {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.workspace-body-pane::-webkit-scrollbar {
+  width: 5px;
+}
+
+.workspace-body-pane::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.workspace-body-pane::-webkit-scrollbar-thumb {
+  background: rgba(232, 235, 239, 0.08);
+  border-radius: 10px;
+}
+
+.workspace-body-pane::-webkit-scrollbar-thumb:hover {
+  background: rgba(232, 235, 239, 0.18);
+}
+
+/* Aerospace Sub-Toolbar / Notice Strip */
+.workspace-toolbar-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 14px;
+  background: rgba(232, 235, 239, 0.02);
+  border: 1px solid rgba(232, 235, 239, 0.05);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.workspace-daemon-notice {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.workspace-daemon-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+
+.workspace-status-text {
+  margin: 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(157, 180, 211, 0.08);
+  border: 1px solid rgba(157, 180, 211, 0.18);
+}
+
+/* Search Bar Lockup */
+.workspace-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.workspace-search-icon {
+  position: absolute;
+  left: 13px;
+  color: rgba(232, 235, 239, 0.35);
+  pointer-events: none;
+}
+
+.workspace-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(232, 235, 239, 0.03);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  border-radius: 10px;
+  color: var(--fg);
+  font-family: Inter, sans-serif;
+  font-size: 12px;
+  padding: 9px 14px 9px 38px;
+  outline: none;
+  transition: all 0.2s ease;
+  min-height: 38px;
+}
+
+.workspace-search-input:focus {
+  border-color: rgba(157, 180, 211, 0.4);
+  box-shadow: 0 0 14px rgba(157, 180, 211, 0.14);
+  background: rgba(232, 235, 239, 0.05);
+}
+
+.workspace-search-input::placeholder {
+  color: rgba(232, 235, 239, 0.32);
+}
+
+/* Multi-Column Grid Layouts */
+.workspace-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+
+@media (max-width: 768px) {
+  .workspace-grid-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Calendar Tracker & Schedule Matrix */
+.workspace-calendar-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workspace-calendar-month-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  text-transform: uppercase;
+  min-width: 130px;
+  text-align: center;
+}
+
+.workspace-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  width: 100%;
+}
+
+.workspace-calendar-day-header {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: rgba(232, 235, 239, 0.4);
+  text-align: center;
+  padding: 4px 0 6px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.workspace-calendar-cell {
+  position: relative;
+  min-height: 48px;
+  background: rgba(232, 235, 239, 0.02);
+  border: 1px solid rgba(232, 235, 239, 0.05);
+  border-radius: 8px;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.workspace-calendar-cell:hover {
+  background: rgba(232, 235, 239, 0.06);
+  border-color: rgba(157, 180, 211, 0.28);
+  transform: translateY(-1px);
+}
+
+.workspace-calendar-cell.other-month {
+  opacity: 0.22;
+}
+
+.workspace-calendar-cell.today {
+  border-color: rgba(56, 189, 248, 0.6);
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.workspace-calendar-cell.selected {
+  border-color: var(--accent);
+  background: rgba(157, 180, 211, 0.16);
+  box-shadow: 0 0 12px rgba(157, 180, 211, 0.18);
+}
+
+.workspace-calendar-day-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+.workspace-calendar-dots {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 6px;
+  margin-top: 2px;
+}
+
+.workspace-calendar-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+
+.workspace-calendar-dot.event {
+  background: #38bdf8;
+  box-shadow: 0 0 5px #38bdf8;
+}
+
+.workspace-calendar-dot.task {
+  background: #22c55e;
+  box-shadow: 0 0 5px #22c55e;
+}
+
+.workspace-calendar-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(157, 180, 211, 0.08);
+  border: 1px solid rgba(157, 180, 211, 0.2);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--accent);
+}
+
+.workspace-calendar-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: rgba(232, 235, 239, 0.5);
+  margin-top: 2px;
+}
+
+.workspace-calendar-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Compact Aerospace Form Overrides for Google Workspace */
+.google-workspace form {
+  margin: 4px 0 0 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+}
+
+.google-workspace label {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 9px !important;
+  letter-spacing: 0.08em !important;
+  color: rgba(232, 235, 239, 0.45) !important;
+  text-transform: uppercase !important;
+}
+
+.google-workspace input,
+.google-workspace select {
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 5px 10px !important;
+  font-size: 11.5px !important;
+  background: rgba(232, 235, 239, 0.03) !important;
+  border: 1px solid rgba(232, 235, 239, 0.08) !important;
+  border-radius: 8px !important;
+  color: var(--fg) !important;
+  box-sizing: border-box !important;
+}
+
+.google-workspace input:focus,
+.google-workspace select:focus {
+  border-color: rgba(157, 180, 211, 0.35) !important;
+  background: rgba(232, 235, 239, 0.05) !important;
+}
+
+.google-workspace .workspace-btn.primary {
+  min-height: 32px !important;
+  height: 32px !important;
+  padding: 0 12px !important;
+  font-size: 11px !important;
+  margin-top: 4px !important;
+}
+
+.workspace-cell-agenda-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+
+.workspace-sub-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workspace-sub-feed-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  text-transform: uppercase;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(232, 235, 239, 0.05);
+}
+
+/* Cards & Containers */
+.workspace-card {
+  background: rgba(15, 19, 26, 0.65);
+  border: 1px solid rgba(232, 235, 239, 0.07);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.workspace-card:hover {
+  border-color: rgba(232, 235, 239, 0.11);
+}
+
+.workspace-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(232, 235, 239, 0.05);
+}
+
+.workspace-card-header-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: Inter, sans-serif;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+/* Fields & Inputs */
+.workspace-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+}
+
+.workspace-field span {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: rgba(232, 235, 239, 0.42);
+  text-transform: uppercase;
+}
+
+.workspace-input,
+.workspace-textarea,
+.workspace-select {
+  color-scheme: dark;
+  box-sizing: border-box;
+  width: 100%;
+  background: rgba(232, 235, 239, 0.03);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  border-radius: 8px;
+  color: var(--fg);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  padding: 9px 12px;
+  min-height: 38px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.workspace-textarea {
+  min-height: 85px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.workspace-input:focus,
+.workspace-textarea:focus,
+.workspace-select:focus {
+  border-color: rgba(157, 180, 211, 0.4);
+  box-shadow: 0 0 12px rgba(157, 180, 211, 0.12);
+  background: rgba(232, 235, 239, 0.05);
+}
+
+.workspace-input::placeholder,
+.workspace-textarea::placeholder {
+  color: rgba(232, 235, 239, 0.3);
+}
+
+.workspace-select option {
+  background-color: #0b0f17;
+  color: #e8ebef;
+}
+
+/* Buttons */
+.workspace-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 14px;
+  min-height: 32px;
+  border-radius: 8px;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  background: rgba(232, 235, 239, 0.04);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  color: var(--fg);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  outline: none;
+}
+
+.workspace-btn:hover:not(:disabled) {
+  background: rgba(232, 235, 239, 0.08);
+  border-color: rgba(232, 235, 239, 0.16);
+  color: #ffffff;
+}
+
+.workspace-btn:disabled {
+  opacity: 0.45;
+  cursor: wait;
+}
+
+.workspace-btn.primary {
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.28);
+  color: #4ade80;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.08);
+}
+
+.workspace-btn.primary:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.45);
+  box-shadow: 0 0 16px rgba(34, 197, 94, 0.18);
+  transform: translateY(-1px);
+}
+
+.workspace-btn.secondary {
+  background: rgba(232, 235, 239, 0.04);
+  border-color: rgba(232, 235, 239, 0.08);
+  color: var(--fg);
+}
+
+.workspace-btn.secondary:hover:not(:disabled) {
+  color: #ffffff;
+  background: rgba(232, 235, 239, 0.08);
+  border-color: rgba(232, 235, 239, 0.18);
+}
+
+.workspace-btn.danger {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.22);
+  color: #f87171;
+}
+
+.workspace-btn.danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.16);
+  border-color: rgba(239, 68, 68, 0.38);
+  color: #fca5a5;
+}
+
+.workspace-btn.micro {
+  min-height: 26px !important;
+  max-height: 26px !important;
+  padding: 3px 9px;
+  font-size: 10px;
+  border-radius: 6px;
+  gap: 5px;
+}
+
+.workspace-btn-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Preset Quick Time Chips */
+.workspace-chip-group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.workspace-time-chip {
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9.5px;
+  font-weight: 500;
+  background: rgba(232, 235, 239, 0.03);
+  border: 1px solid rgba(232, 235, 239, 0.07);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.workspace-time-chip:hover {
+  background: rgba(157, 180, 211, 0.1);
+  border-color: rgba(157, 180, 211, 0.28);
+  color: #ffffff;
+}
+
+/* 2-Column Responsive Grids */
+.workspace-grid-2col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+}
+
+@media (max-width: 680px) {
+  .workspace-grid-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Records List & Item Cards */
+.workspace-records-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.workspace-item-card {
+  background: rgba(14, 18, 24, 0.6);
+  border: 1px solid rgba(232, 235, 239, 0.06);
+  border-radius: 11px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.workspace-item-card:hover {
+  background: rgba(16, 21, 29, 0.75);
+  border-color: rgba(157, 180, 211, 0.18);
+}
+
+.workspace-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.workspace-item-title {
+  margin: 0;
+  font-family: Inter, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+}
+
+.workspace-item-time {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.workspace-item-body {
+  margin: 0;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(232, 235, 239, 0.72);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.workspace-item-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(232, 235, 239, 0.04);
+}
+
+/* Badges */
+.workspace-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8.5px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.workspace-badge.alert {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.workspace-badge.pending {
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.22);
+  color: #38bdf8;
+}
+
+.workspace-badge.tag {
+  background: rgba(232, 235, 239, 0.04);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  color: var(--muted);
+}
+
+/* Empty States */
+.workspace-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 38px 20px;
+  gap: 10px;
+  text-align: center;
+  border: 1px dashed rgba(232, 235, 239, 0.08);
+  border-radius: 12px;
+  background: rgba(232, 235, 239, 0.01);
+}
+
+.workspace-empty-title {
+  margin: 0;
+  font-family: Inter, sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.workspace-empty-desc {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--faint);
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+/* Saved Memory Image Viewer Frame */
+.saved-memory-wrap {
+  margin-top: 8px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  background: #000000;
+  max-width: 360px;
+}
+
+.saved-memory-image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+
+/* Google Workspace Styles */
+.google-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.google-workspace h3,
+.google-workspace h4 {
+  margin: 0;
+  font-family: Inter, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.google-workspace p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.google-workspace a {
+  color: #38bdf8;
+  text-decoration: none;
+}
+
+.google-workspace a:hover {
+  text-decoration: underline;
+}
+
+
+/* Ultra-Clean Aerospace Compact Styling for Google Workspace */
+.google-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.google-workspace .workspace-card {
+  background: rgba(10, 14, 23, 0.75) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  padding: 12px 14px !important;
+  box-sizing: border-box !important;
+}
+
+.google-workspace form {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.google-workspace label {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 3px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  font-size: 8.5px !important;
+  letter-spacing: 0.08em !important;
+  color: rgba(157, 180, 211, 0.75) !important;
+  text-transform: uppercase !important;
+}
+
+.google-workspace input,
+.google-workspace select {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 6px !important;
+  color: var(--fg) !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.15s ease, background 0.15s ease !important;
+}
+
+.google-workspace input:focus,
+.google-workspace select:focus {
+  border-color: #38bdf8 !important;
+  background: rgba(56, 189, 248, 0.05) !important;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.2) !important;
+}
+
+.google-workspace .workspace-btn.primary {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 12px !important;
+  font-size: 10.5px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+  letter-spacing: 0.04em !important;
+}
+
+.google-workspace .workspace-btn.secondary {
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 10px !important;
+  font-size: 10px !important;
+}
+
+.google-workspace .workspace-records-stream::-webkit-scrollbar {
+  width: 4px;
+}
+.google-workspace .workspace-records-stream::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}

@@ -10,16 +10,17 @@ import logging
 import os
 from pathlib import Path
 import secrets
-import ssl
 import time
 from datetime import date, datetime, timedelta, timezone
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, field_validator, model_validator
 from dotenv import dotenv_values
+
+from .tls import verified_tls
 
 ROOT = Path(__file__).resolve().parents[2]
 CALLBACK = 'http://127.0.0.1:8000/api/v1/google/callback'
@@ -142,12 +143,19 @@ class GoogleWorkspace:
         except HTTPException:
             tokens = {}; notice = 'Stored Google credentials cannot be unlocked. Reconnect Google.'
         account = tokens.get('account') or {}
+        settings = {**dotenv_values(ROOT / 'backend/.env'), **os.environ}
+        public_site = (settings.get('ORACLE_PUBLIC_SITE_URL') or '').rstrip('/')
+        try:
+            parsed_site = urlsplit(public_site)
+            privacy_url = public_site + '/privacy.html' if parsed_site.scheme == 'https' and parsed_site.hostname and not parsed_site.username and not parsed_site.password and not parsed_site.query and not parsed_site.fragment else None
+        except ValueError:
+            privacy_url = None
         return {'configured': configured, 'connected': bool(tokens.get('refresh_token') or tokens.get('access_token')),
                 'signed_in': bool(account.get('sub') and account.get('email')),
                 'account': {'email': account['email']} if account.get('email') else None,
                 'offline_access': bool(tokens.get('refresh_token')), 'scopes': tokens.get('scope', '').split(),
                 'redirect_uri': CALLBACK, 'sync_mode': 'manual',
-                'project_id': ({**dotenv_values(ROOT / 'backend/.env'), **os.environ}).get('ORACLE_GOOGLE_PROJECT_ID'), 'notice': notice}
+                'project_id': settings.get('ORACLE_GOOGLE_PROJECT_ID'), 'notice': notice, 'privacy_url': privacy_url}
 
     def start(self):
         client = self.config()
@@ -163,7 +171,7 @@ class GoogleWorkspace:
 
     async def http(self, method, url, **kwargs):
         try:
-            async with httpx.AsyncClient(verify=ssl.create_default_context(), timeout=20,
+            async with httpx.AsyncClient(verify=verified_tls(system_trust=True), timeout=20,
                                          follow_redirects=False, transport=self.transport) as client:
                 return await client.request(method, url, **kwargs)
         except httpx.RequestError:
@@ -308,11 +316,13 @@ def google_router(service, authorized, records=None):
         return {'calendars': [{key: item.get(key) for key in ['id', 'summary', 'accessRole', 'timeZone']} for item in data.get('items', [])], 'more': bool(data.get('nextPageToken'))}
 
     @router.get('/events', dependencies=secure)
-    async def events(calendar_id: str = 'primary'):
+    async def events(calendar_id: str = 'primary', days: int = 60):
         now = datetime.now(timezone.utc)
+        start_time = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        end_time = now + timedelta(days=max(1, min(days, 365)))
         data = await service.api('GET', f'calendars/{quote(calendar_id, safe="")}/events', params={
-            'timeMin': now.isoformat(), 'timeMax': (now + timedelta(days=14)).isoformat(), 'singleEvents': 'true', 'orderBy': 'startTime', 'maxResults': 100})
-        return {'events': [{key: item.get(key) for key in ['id', 'summary', 'start', 'end', 'htmlLink', 'status']} for item in data.get('items', [])], 'more': bool(data.get('nextPageToken'))}
+            'timeMin': start_time.isoformat(), 'timeMax': end_time.isoformat(), 'singleEvents': 'true', 'orderBy': 'startTime', 'maxResults': 100})
+        return {'events': [{key: item.get(key) for key in ['id', 'summary', 'start', 'end', 'location', 'htmlLink', 'status']} for item in data.get('items', [])], 'more': bool(data.get('nextPageToken'))}
 
     @router.post('/events', dependencies=secure)
     async def add_event(body: EventInput, calendar_id: str = 'primary'):
@@ -330,7 +340,8 @@ def google_router(service, authorized, records=None):
     @router.get('/tasks', dependencies=secure)
     async def tasks(tasklist_id: str = '@default'):
         data = await service.api('GET', f'lists/{quote(tasklist_id, safe="")}/tasks', tasks=True, params={'maxResults': 100, 'showCompleted': 'true', 'showHidden': 'true'})
-        return {'tasks': [{key: item.get(key) for key in ['id', 'title', 'due', 'status']} for item in data.get('items', [])], 'more': bool(data.get('nextPageToken'))}
+        items = [item for item in data.get('items', []) if not item.get('deleted')]
+        return {'tasks': [{key: item.get(key) for key in ['id', 'title', 'due', 'status']} for item in items], 'more': bool(data.get('nextPageToken'))}
 
     @router.post('/tasks', dependencies=secure)
     async def add_task(body: GoogleTaskInput, tasklist_id: str = '@default'):

@@ -30,7 +30,7 @@ def feature(angle):
 
 def test_all_views_belong_to_one_identity_and_best_view_verifies(synthetic):
     r,_,_=synthetic
-    pid=r.enroll('One','notes',b'')['id']
+    pid=r.enroll('One','notes',b'', consent=True)['id']
     for angle in [.6,1.]:
         r._recognizer.feat=feature(angle);r.enroll('Ignored','ignored',b'',pid,True)
     identities=r.list_people()
@@ -42,20 +42,20 @@ def test_all_views_belong_to_one_identity_and_best_view_verifies(synthetic):
     assert all('embedding' not in s for s in identities[0]['samples'])
 
 def test_add_sample_rejects_different_identity(synthetic):
-    r,_,_=synthetic;pid=r.enroll('One','',b'')['id'];r._recognizer.feat=feature(2.)
+    r,_,_=synthetic;pid=r.enroll('One','',b'', consent=True)['id'];r._recognizer.feat=feature(2.)
     with pytest.raises(HTTPException,match='does not clearly match'): r.enroll('One','',b'',pid,True)
     assert r.list_people()[0]['sample_count']==1
 
 def test_multiple_faces_rejected(synthetic):
-    r,frame,face=synthetic;pid=r.enroll('One','',b'')['id']
+    r,frame,face=synthetic;pid=r.enroll('One','',b'', consent=True)['id']
     r._faces=lambda payload:(frame,[face.copy(),face.copy()])
-    with pytest.raises(HTTPException,match='Multiple faces'): r.enroll('Two','',b'')
+    with pytest.raises(HTTPException,match='Multiple faces'): r.enroll('Two','',b'', consent=True)
     assert not r.verify(b'',pid)['verified']
     assert 'Multiple faces' in r.verify(b'',pid)['reason']
 
 def test_quality_gate_applies_to_all_operations(synthetic):
-    r,frame,face=synthetic;pid=r.enroll('One','',b'')['id'];frame[:]=0
-    with pytest.raises(HTTPException): r.enroll('Two','',b'')
+    r,frame,face=synthetic;pid=r.enroll('One','',b'', consent=True)['id'];frame[:]=0
+    with pytest.raises(HTTPException): r.enroll('Two','',b'', consent=True)
     assert r.identify(b'')['identified'][0]['recognition_state']=='poor_quality'
     assert r.verify(b'',pid)['verification_state']=='poor_quality'
 
@@ -66,12 +66,12 @@ def test_tiny_and_oblique_faces_rejected(synthetic):
     assert r._feature(frame,oblique)[0] is None
 
 def test_invalid_embedding_ignored(synthetic):
-    r,_,_=synthetic;pid=r.enroll('One','',b'')['id']
+    r,_,_=synthetic;pid=r.enroll('One','',b'', consent=True)['id']
     with r.engine.begin() as conn: conn.execute(text('UPDATE face_samples SET embedding=:embedding'),{'embedding':b'broken'})
     assert not r.identify(b'')['has_match'] and not r.verify(b'',pid)['verified']
 
 def test_gallery_reloads_revocations(synthetic):
-    r,_,_=synthetic;pid=r.enroll('One','',b'')['id'];r._get_gallery()
+    r,_,_=synthetic;pid=r.enroll('One','',b'', consent=True)['id'];r._get_gallery()
     PersonRecognizer(r.engine).update_person(pid,{'permission':'disabled'})
     assert not r.identify(b'')['has_match']
 

@@ -27,6 +27,14 @@ const LAYERS: WaveLayer[] = [
   { color: 'rgba(224, 242, 254, 0.92)', speed: 2.9, freq: 0.028, baseAmp: 8, phaseOffset: 0.8 }
 ];
 
+const CALIBRATED_LAYERS: WaveLayer[] = [
+  // Calibrated Locked Harmonic Ribbon (Emerald-Mint resonance)
+  { color: 'rgba(16, 185, 129, 0.40)', speed: 1.6, freq: 0.016, baseAmp: 18, phaseOffset: 0 },
+  { color: 'rgba(34, 197, 94, 0.52)', speed: 2.2, freq: 0.024, baseAmp: 22, phaseOffset: 1.4 },
+  { color: 'rgba(74, 222, 128, 0.72)', speed: 2.8, freq: 0.032, baseAmp: 28, phaseOffset: 2.8 },
+  { color: 'rgba(220, 252, 231, 0.95)', speed: 2.6, freq: 0.028, baseAmp: 8, phaseOffset: 0.8 }
+];
+
 export const FluidVoiceWaveform: React.FC<FluidVoiceWaveformProps> = ({
   analyser,
   width = 540,
@@ -77,7 +85,8 @@ export const FluidVoiceWaveform: React.FC<FluidVoiceWaveformProps> = ({
       ctx.globalCompositeOperation = 'screen';
 
       // Draw each harmonic wave ribbon
-      LAYERS.forEach((layer, idx) => {
+      const activeLayers = isCalibrated ? CALIBRATED_LAYERS : LAYERS;
+      activeLayers.forEach((layer, idx) => {
         ctx.beginPath();
 
         const step = 4;

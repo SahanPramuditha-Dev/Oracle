@@ -2,6 +2,7 @@
 .setup/
 .venv/
 backend/.venv/
+.setup/vision-bench/
 node_modules/
 dist/
 __pycache__/
@@ -18,8 +19,18 @@ data/
 models/
 archive/
 *.log
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
 test-results/
 playwright-report/
+.playwright-cli/
+.firebase/
+output/
+runtime/
+scratch/
 
 # Editor and operating system files
 .DS_Store

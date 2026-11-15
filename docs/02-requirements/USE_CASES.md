@@ -1,5 +1,7 @@
 # ORACLE complete scenario register
 
+This document records the original planning or integration baseline. See the [current roadmap](../ORACLE_ROADMAP.md) for current development information.
+
 Updated 4 November 2026. Full scenario inventory retained; current implementation audit linked below.
 
 ## Current implementation boundary

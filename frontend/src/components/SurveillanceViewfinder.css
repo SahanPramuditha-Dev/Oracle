@@ -581,7 +581,8 @@
 }
 
 .camera-object-controls {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
@@ -609,9 +610,38 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 10.5px;
-  color: var(--muted);
+  font-size: 13px;
+  color: #c3cdd8;
+  min-height: 44px;
+  min-width: 0;
 }
+
+.camera-object-controls > button { min-height: 44px; font-size: 13px; }
+.camera-object-controls input { flex-shrink: 0; accent-color: #4ade80; }
+.camera-object-view {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  margin: 4px 0 0;
+  padding: 0;
+  border: 0;
+}
+.camera-object-view legend { padding: 0 0 8px; color: #c3cdd8; font-size: 13px; }
+.camera-object-view label {
+  flex: 1 1 160px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid #35404c;
+  border-radius: 8px;
+  background: #161c24;
+  cursor: pointer;
+}
+.camera-object-view label:has(input:checked) { border-color: #4ade80; background: #122b21; color: #e8ebef; }
+.camera-object-heading { flex-wrap: wrap; gap: 6px; }
+.camera-object-panel { min-width: 0; }
+.camera-object-panel p[role="status"] { font-size: 13px; overflow-wrap: anywhere; }
 
 .camera-object-controls select {
   background: rgba(232, 235, 239, 0.04);
@@ -623,8 +653,9 @@
 }
 
 .camera-object-hint {
-  font-size: 9.5px;
-  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #aab4c2;
   margin-top: 4px;
   margin-bottom: 0;
 }
@@ -731,7 +762,25 @@
 .oracle-camera-card .card-section-tag { font-size: 15px; letter-spacing: normal; text-transform: none; color: #e8ebef; }
 .oracle-camera-card button.card-header-icon-btn { width: 40px !important; height: 40px !important; }
 .oracle-camera-card button:focus-visible, .oracle-camera-card select:focus-visible, .oracle-camera-card input:focus-visible { outline: 2px solid #7dd3fc; outline-offset: 3px; }
-.oracle-camera-card .poi-target-container { border: 1px solid rgba(148,163,184,.7); border-radius: 6px; }
+.oracle-camera-card .poi-target-container { border: 1px solid rgba(245,248,252,.72); border-radius: 6px; }
+.oracle-camera-card .poi-target-container.camera-face-confirming { border-style: dashed; }
+.oracle-camera-card .poi-target-container::before {
+  content: '';
+  position: absolute;
+  inset: -1px auto auto -1px;
+  width: 12px;
+  height: 12px;
+  border-top: 2px solid var(--camera-face-accent, transparent);
+  border-left: 2px solid var(--camera-face-accent, transparent);
+  border-top-left-radius: 6px;
+  pointer-events: none;
+}
+.oracle-camera-card .live-detection-name-badge svg { flex-shrink: 0; }
+.camera-watchlist-button { pointer-events: auto; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 4px; }
+.oracle-camera-card .camera-positioned-label { max-width: 34cqw; max-height: 7.5cqw; overflow: hidden; }
+.oracle-camera-card .camera-positioned-label .live-name-text,
+.camera-positioned-label .camera-watchlist-button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.camera-watchlist-review { display: grid; gap: 8px; position: absolute; bottom: 1rem; left: 1rem; z-index: 30; max-width: min(320px, 90%); padding: 14px; border: 1px solid #8c6927; border-radius: 10px; background: #171b22; color: #f4e5bf; overflow-wrap: anywhere; }
 .oracle-camera-card .camera-viewport-frame { container-type: inline-size; }
 .oracle-camera-card .live-detection-name-badge { width: max-content; max-width: none; box-sizing: border-box; transform: none; animation: none; overflow: visible; box-shadow: none !important; font-family: inherit; font-weight: 500; letter-spacing: normal; }
 .oracle-camera-card .live-name-text { min-width: 0; white-space: normal; overflow-wrap: anywhere; text-transform: none; }
@@ -742,10 +791,10 @@
 .camera-tracking-toggle { display: flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 8px; color: #d8e0e8; font-size: 13px; cursor: pointer; }
 .camera-tracking-toggle input { accent-color: #4ade80; width: 16px; height: 16px; }
 .camera-error-message { color: #fca5a5; font-size: 13px; line-height: 1.5; }
-.oracle-camera-card .poi-target-container { transition: left .18s linear, top .18s linear, width .18s linear, height .18s linear; }
+.oracle-camera-card .poi-target-container { transition: left .1s linear, top .1s linear, width .1s linear, height .1s linear; }
 
 /* Consistent compact settings, with preview and capture action kept in view. */
-.oracle-camera-card { padding: 20px !important; gap: 0; }
+.oracle-camera-card { padding: 16px !important; gap: 0; }
 .oracle-camera-card .card-header-strip { padding-bottom: 12px; margin-bottom: 0; flex-shrink: 0; }
 .oracle-camera-card .camera-viewport-frame { margin-top: 16px; border-radius: 12px; box-shadow: none; }
 .oracle-camera-card .camera-settings { margin-top: 16px; padding: 16px 2px 4px; max-height: min(32dvh, 300px); overflow-y: auto; scrollbar-width: thin; scrollbar-color: #39424c transparent; flex-shrink: 1; }
@@ -768,3 +817,424 @@
 .oracle-camera-card .camera-card-footer { flex-shrink: 0; margin-top: 16px; padding-top: 16px; }
 .oracle-camera-card .camera-settings > .camera-footer-btn { min-height: 40px !important; width: 100%; justify-content: center; gap: 8px; font-family: inherit; font-size: 13px; letter-spacing: normal; }
 
+/* Presence surface: the same quiet graphite, blue-grey and pill controls as home. */
+.oracle-camera-card {
+  background: rgba(12, 14, 17, .88) !important;
+  border-color: rgba(232, 235, 239, .09) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .28), inset 0 1px 0 rgba(232, 235, 239, .025) !important;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+.oracle-camera-card .card-section-tag {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.oracle-camera-card .card-header-actions { gap: 6px; }
+.oracle-camera-card button.card-header-icon-btn {
+  width: 36px !important;
+  height: 36px !important;
+  background: rgba(232, 235, 239, .025) !important;
+  border-color: rgba(232, 235, 239, .08) !important;
+  box-shadow: none !important;
+}
+.oracle-camera-card .card-status-badge { font-size: 10px; font-weight: 500; color: var(--muted); }
+.oracle-camera-card .camera-viewport-frame { margin-top: 12px; border-radius: 10px; border: 1px solid rgba(232, 235, 239, .06); }
+.oracle-camera-card .camera-card-footer { margin-top: 12px; padding-top: 12px; border-color: rgba(232, 235, 239, .06); }
+.oracle-camera-card .camera-footer-actions button.camera-footer-btn.primary {
+  min-height: 44px !important;
+  border-radius: 999px;
+  background: rgba(157, 180, 211, .055) !important;
+  border: 1px solid rgba(157, 180, 211, .18) !important;
+  color: var(--accent) !important;
+  box-shadow: none !important;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .03em;
+}
+.oracle-camera-card .camera-footer-actions button.camera-footer-btn.primary:hover:not(:disabled) {
+  background: rgba(157, 180, 211, .11) !important;
+  border-color: rgba(157, 180, 211, .35) !important;
+  color: var(--fg) !important;
+  box-shadow: none !important;
+  transform: none;
+}
+.oracle-camera-card .camera-tracking-toggle input:checked { background: #647f9f; }
+.oracle-camera-card .camera-settings { max-height: none; overflow: visible; flex-shrink: 0; margin-top: 12px; padding: 12px 0 0; }
+.camera-advanced-controls { display: grid; gap: 12px; min-width: 0; }
+.camera-advanced-controls h3 { margin: 0; font-size: 14px; font-weight: 500; color: var(--fg); }
+.camera-advanced-controls .camera-toolbar-row { display: grid; gap: 12px; padding: 0; margin: 0; border: 0; }
+.camera-advanced-controls .oracle-select-capsule { min-width: 0; width: 100%; min-height: 44px; border-radius: 8px; }
+.camera-advanced-controls .oracle-select-capsule select { min-width: 0; flex: 1; font-size: 13px; }
+.camera-advanced-controls .camera-details-drawer { padding: 0; margin: 0; }
+.camera-advanced-controls .camera-biometric-details { box-shadow: none; padding: 12px; }
+.oracle-camera-card .camera-object-view label:has(input:checked) { background: rgba(157, 180, 211, .08); border-color: rgba(157, 180, 211, .4); }
+.oracle-camera-card .camera-object-controls input { accent-color: var(--accent); }
+.oracle-camera-card .live-detection-name-badge { background: rgba(12, 14, 17, .88); border-radius: 5px; font-size: 10px; }
+@media (prefers-reduced-motion: reduce) {
+  .oracle-camera-card .poi-target-container { transition: none; }
+}
+
+
+
+/* ==========================================================================
+   Live QR Code Reticle & Action Banner Overlay
+   ========================================================================== */
+
+.camera-qr-reticle {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed rgba(56, 189, 248, 0.6);
+  background: rgba(56, 189, 248, 0.08);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.25), inset 0 0 12px rgba(56, 189, 248, 0.15);
+  border-radius: 6px;
+  z-index: 20;
+  transition: all 0.15s ease-out;
+}
+
+.camera-qr-corner {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-color: #38bdf8;
+  border-style: solid;
+}
+.camera-qr-corner.tl { top: -2px; left: -2px; border-width: 2px 0 0 2px; border-top-left-radius: 4px; }
+.camera-qr-corner.tr { top: -2px; right: -2px; border-width: 2px 2px 0 0; border-top-right-radius: 4px; }
+.camera-qr-corner.bl { bottom: -2px; left: -2px; border-width: 0 0 2px 2px; border-bottom-left-radius: 4px; }
+.camera-qr-corner.br { bottom: -2px; right: -2px; border-width: 0 2px 2px 0; border-bottom-right-radius: 4px; }
+
+.camera-qr-reticle-pill {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(14, 18, 24, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.6);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #38bdf8;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.camera-qr-banner {
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: linear-gradient(180deg, rgba(20, 27, 38, 0.95) 0%, rgba(13, 17, 23, 0.98) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.6), 0 0 16px rgba(56, 189, 248, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: qrSlideUp 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 30;
+}
+
+@keyframes qrSlideUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.camera-qr-banner-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.camera-qr-banner-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #38bdf8;
+}
+
+.camera-qr-icon-pulse {
+  color: #38bdf8;
+  animation: qrPulse 1.8s infinite ease-in-out;
+}
+
+@keyframes qrPulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.15); opacity: 1; filter: drop-shadow(0 0 4px #38bdf8); }
+}
+
+.camera-qr-dismiss {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+.camera-qr-dismiss:hover {
+  color: #f1f5f9;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.camera-qr-banner-payload {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #e2e8f0;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 6px 9px;
+  word-break: break-all;
+  max-height: 48px;
+  overflow-y: auto;
+}
+
+.camera-qr-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.camera-qr-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.camera-qr-btn.primary {
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.28) 0%, rgba(56, 189, 248, 0.12) 100%);
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #38bdf8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 10px rgba(56, 189, 248, 0.2);
+}
+.camera-qr-btn.primary:hover {
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.38) 0%, rgba(56, 189, 248, 0.2) 100%);
+  border-color: rgba(56, 189, 248, 0.85);
+  color: #7dd3fc;
+  box-shadow: 0 2px 12px rgba(56, 189, 248, 0.35);
+}
+
+.camera-qr-btn.secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+.camera-qr-btn.secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+.camera-qr-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.product-scanner { display: grid; gap: 8px; }
+.oracle-camera-host {
+  position: fixed;
+  inset: auto auto 24px 24px;
+  z-index: 850;
+  max-width: calc(100vw - 48px);
+}
+.oracle-camera-workspace {
+  display: grid;
+  grid-template-columns: min(460px, calc(100vw - 48px)) auto;
+  gap: 12px;
+  align-items: end;
+}
+.oracle-camera-workspace > .product-scanner {
+  width: min(320px, calc(100vw - 520px));
+  max-height: calc(100dvh - 48px);
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  pointer-events: auto;
+  background: #151a22;
+  border: 1px solid #303845;
+  border-radius: 16px;
+  animation: product-details-enter 180ms ease-out;
+}
+.oracle-camera-workspace > .product-scanner[hidden] { display: none; }
+.oracle-camera-workspace.is-expanded {
+  position: fixed;
+  inset: 24px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+}
+.oracle-camera-workspace.is-expanded > .oracle-camera-card { max-width: none; min-height: 0; }
+.oracle-camera-workspace.is-expanded .camera-viewport-frame {
+  width: auto;
+  height: min(70dvh, calc(100% - 90px));
+  max-width: 100%;
+  align-self: center;
+}
+.oracle-camera-workspace.is-expanded > .product-scanner { align-content: start; }
+@keyframes product-details-enter {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@media (max-width: 790px) {
+  .oracle-camera-workspace, .oracle-camera-workspace.is-expanded {
+    grid-template-columns: min(460px, calc(100vw - 48px));
+    grid-template-rows: auto auto;
+    max-height: calc(100dvh - 48px);
+    overflow: auto;
+  }
+  .oracle-camera-workspace.is-expanded { grid-template-columns: minmax(0, 1fr); }
+  .oracle-camera-workspace > .product-scanner { width: 100%; max-height: 40dvh; }
+  .oracle-camera-workspace.is-expanded .camera-viewport-frame { height: auto; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .oracle-camera-workspace > .product-scanner { animation: none; }
+}
+.oracle-camera-card button.camera-object-outline {
+  pointer-events: auto;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+}
+.oracle-camera-card button.camera-object-outline:is([aria-pressed="true"], :focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.product-scanner-dock {
+  position: fixed;
+  z-index: 860;
+  inset: auto 24px 24px auto;
+  width: min(460px, calc(100vw - 48px));
+  max-height: 75dvh;
+  overflow: auto;
+  background: var(--surface, #101820);
+  padding: 12px;
+  border-radius: 12px;
+}
+.product-scanner-actions { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.product-scanner-actions label { display: grid; gap: 4px; min-width: 0; }
+.product-scanner input { max-width: 100%; }
+.product-scanner button { min-height: 44px; }
+.product-scanner-result { display: flex; flex-wrap: wrap; gap: 12px; overflow-wrap: anywhere; }
+.product-scanner-result img { width: 132px; max-width: 100%; object-fit: contain; align-self: start; }
+.product-scanner-result > div { flex: 1 1 170px; min-width: 0; }
+.product-evidence-image { position: relative; margin: 8px 0; overflow: hidden; border-radius: 6px; }
+.product-evidence-image img { display: block; width: 100%; }
+.product-evidence-box { position: absolute; border: 1px solid #a8dcff; background: #a8dcff24; }
+@media (max-width: 480px) {
+  .product-scanner-result { display: grid; }
+}
+
+.product-scanner { font-size: 14px; }
+.product-scanner .camera-object-heading strong { font-size: 15px; }
+.product-scanner input:not([type="file"]) { min-height: 36px; }
+
+.product-framing-guide {
+  position: absolute;
+  inset: 19% 16%;
+  border: 2px dashed rgba(255, 255, 255, 0.8);
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+
+
+.camera-mode-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 12px;
+  padding: 4px;
+  border: 1px solid #303943;
+  border-radius: 12px;
+  background: #101419;
+}
+
+.oracle-camera-card button.camera-mode-button {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #c3ccd7;
+  font: inherit;
+  cursor: pointer;
+}
+
+.oracle-camera-card button.camera-mode-button:hover {
+  background: #1c242d;
+}
+
+.oracle-camera-card button.camera-mode-button[aria-pressed="true"] {
+  border-color: #6b8199;
+  background: #273647;
+  color: #fff;
+  font-weight: 600;
+}
+
+.camera-mode-button:focus-visible,
+.product-scanner :is(button, input, summary):focus-visible {
+  outline: 2px solid #9cc9ff;
+  outline-offset: 3px;
+}
+
+.product-framing-guide span {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #101419;
+  color: #fff;
+  font-size: 12px;
+  text-align: center;
+}
+
+.product-scanner > p,
+.product-upload-filename {
+  color: #c3ccd7;
+  overflow-wrap: anywhere;
+}
+
+.product-catalog-search > summary {
+  display: list-item;
+  padding-block: 12px;
+  cursor: pointer;
+}
+
+.product-catalog-search form {
+  margin-top: 8px;
+}
+
+.product-catalog-search label {
+  flex: 1 1 160px;
+}
+
+.product-scanner .product-catalog-search input {
+  min-height: 44px;
+  padding-inline: 10px;
+  border: 1px solid #596777;
+  border-radius: 8px;
+  background: #161c23;
+  color: #fff;
+}

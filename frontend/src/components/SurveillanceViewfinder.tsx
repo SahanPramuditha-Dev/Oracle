@@ -1,44 +1,98 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useEffectEvent, useRef, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { X, Camera, UserCheck, MoreHorizontal, ShieldCheck, SlidersHorizontal, ChevronDown, Target } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Shield, ShieldCheck, Heart, Users, UserRound, Flag } from 'lucide-react';
+import { X, Camera, SlidersHorizontal, ChevronDown, Target, QrCode, ExternalLink, Copy, Check, FileText, Maximize2, Minimize2, ScanLine } from 'lucide-react';
 import './SurveillanceViewfinder.css';
-import { ObjectRecognitionPanel } from './ObjectRecognitionPanel';
 import { soundEffects } from '../utils/audioEffects';
+import { speakWithKokoro } from '../utils/voice';
 import { fetchWithAuth } from '../utils/api';
+import { setCurrentUser } from '../utils/currentUser';
 import { FaceConfirmation, type FaceObservation } from '../utils/faceTracking';
+import { ObjectConfirmation, type ObjectObservation } from '../utils/objectTracking';
 import { combineSubjects, choosePrimary, type CameraDetection as DetectedObject } from '../utils/personFocus';
+import { ProductIntelligencePanel } from './ProductIntelligencePanel';
+import { UnknownItemTracking, trackingWidth, trackingHeight } from '../utils/unknownItemTracking';
 
-// Preset roles for biometric authority & clearance
-const ROLE_OPTIONS = [
-  { id: 'owner', label: 'Primary Operator (Root Owner)', defaultTitle: 'Primary Operator', rel: 'owner', perm: 'administrator' },
-  { id: 'admin', label: 'System Administrator (Alpha-1)', defaultTitle: 'System Administrator', rel: 'colleague', perm: 'administrator' },
-  { id: 'family', label: 'Family / Trusted Member', defaultTitle: 'Family Member', rel: 'family', perm: 'standard' },
-  { id: 'colleague', label: 'Team / Colleague', defaultTitle: 'Colleague', rel: 'colleague', perm: 'standard' },
-  { id: 'guest', label: 'Authorized Guest', defaultTitle: 'Authorized Guest', rel: 'guest', perm: 'standard' },
-  { id: 'custom', label: '+ Custom Role / Title...', defaultTitle: '', rel: 'colleague', perm: 'standard' }
-] as const;
+function cameraProfileRole(face: FaceObservation) {
+  switch (face.relationship) {
+    case 'owner': return 'Primary Operator';
+    case 'family': return 'Family Member';
+    case 'friend': return 'Friend';
+    case 'guest': return 'Authorized Guest';
+    case 'colleague': {
+      // Enrollment stores the role title before the optional notes separator.
+      const title = face.notes?.split(' • ', 1)[0]?.trim();
+      return title || (face.permission === 'administrator' ? 'System Administrator' : 'Colleague');
+    }
+    default: return 'Recognized profile';
+  }
+}
 
 interface SurveillanceViewfinderProps {
   stream: MediaStream | null;
+  advancedSettingsHost?: HTMLDivElement | null;
   isLocked?: boolean;
   onLockComplete?: () => void;
   onClose?: () => void;
   onSnapshot?: (blob: Blob) => void;
+  onSaveUnknownSnapshot?: (blob: Blob, unknownId: string) => Promise<boolean>;
   onCameraChange?: (deviceId: string) => Promise<void>;
 }
 
 export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
   stream,
+  advancedSettingsHost,
   isLocked = false,
   onLockComplete,
   onClose,
   onSnapshot,
+  onSaveUnknownSnapshot,
   onCameraChange
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [identityReview, setIdentityReview] = useState<{ face: FaceObservation; seen: number; reason: string | null } | null>(null);
+  const expandButton = useRef<HTMLButtonElement>(null);
+  const detailsButton = useRef<HTMLButtonElement>(null);
+  const collapse = useCallback(() => {
+    setExpanded(false);
+    expandButton.current?.focus();
+  }, []);
+  const hideDetails = () => {
+    setDetailsOpen(false);
+    detailsButton.current?.focus();
+  };
+  useEffect(() => {
+    const command = (event: Event) => {
+      const action = (event as CustomEvent<string>).detail;
+      if (action === 'expand') { setExpanded(true); setDetailsOpen(true); }
+      else if (action === 'collapse') { if (expanded) collapse(); }
+      else if (action === 'show') setDetailsOpen(true);
+      else if (action === 'hide') hideDetails();
+      else return;
+      event.preventDefault();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (!expanded || event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      collapse();
+    };
+    window.addEventListener('oracle_camera_command', command);
+    window.addEventListener('keydown', escape, true);
+    return () => {
+      window.removeEventListener('oracle_camera_command', command);
+      window.removeEventListener('keydown', escape, true);
+    };
+  }, [collapse, expanded]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastObjectFrame = useRef<number | null>(null);
   const foregroundCanvas = useRef<HTMLCanvasElement | null>(null);
   const tracks = useRef<DetectedObject[]>([]);
+  const lastObjectRead = useRef(0);
+  const objectConfirmation = useRef(new ObjectConfirmation<DetectedObject & ObjectObservation>(0.35, 3000, 2));
   const [primaryKey, setPrimaryKey] = useState<string | null>(null);
   const [objectDetection, setObjectDetection] = useState(() => localStorage.getItem('oracle_yolo_enabled') !== 'false' && localStorage.getItem('oracle_show_all_objects') !== 'false');
   const nextTrackId = useRef(1);
@@ -46,32 +100,39 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
   const [selectedTrack, setSelectedTrack] = useState<number | null>(null);
   const foregroundModeRef = useRef(foregroundMode);
   foregroundModeRef.current = foregroundMode;
-  const prevThumbnailRef = useRef<Uint8Array | null>(null);
+  const prevThumbnailRef = useRef<Uint8ClampedArray | null>(null);
   const lastAnalyzedTimeRef = useRef<number>(0);
   const motionCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const faceConfirmation = useRef(new FaceConfirmation());
   const lastFaceRead = useRef(0);
+  const lastGreetedPerson = useRef<string | null>(null);
+  const lastGreetedTime = useRef(0);
   const [people, setPeople] = useState<FaceObservation[]>([]);
+  useEffect(() => {
+    const held = people.filter(face => face.held);
+    if (!held.length) return;
+    const expiry = Math.min(...held.map(face => (face.lastSeen ?? 0) + 450));
+    const timer = window.setTimeout(() => {
+      setPeople(current => current.filter(face => !face.held || (face.lastSeen ?? 0) + 450 > Date.now()));
+    }, Math.max(0, expiry - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [people]);
+  const lastUnknownAutoSave = useRef(0);
+  const savedUnknownTracks = useRef(new Set<number>());
   const [objects, setObjects] = useState<DetectedObject[]>([]);
+  const rawFaceBoxesRef = useRef<[number, number, number, number][]>([]);
+  const rawFaceTimeRef = useRef(0);
   const processing = useRef(false);
   const activeRequest = useRef<AbortController | null>(null);
   const [canCapture, setCanCapture] = useState(false);
-  const [readError, setReadError] = useState('');
-  const [, setIsProcessing] = useState(false);
+  const [frameSize, setFrameSize] = useState({ width: 640, height: 480 });
+  const [snapshotPending, setSnapshotPending] = useState(false);
+  const syncFrameSize = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    const { videoWidth, videoHeight } = event.currentTarget;
+    if (videoWidth && videoHeight) setFrameSize({ width: videoWidth, height: videoHeight });
+  };
   const [lastLatency, setLastLatency] = useState<number | null>(null);
-
-  // In-Viewfinder 1-Click Face Enrollment state
-  const [isEnrollingFace, setIsEnrollingFace] = useState(false);
-  const [enrollName, setEnrollName] = useState('');
-  const [enrollNotes, setEnrollNotes] = useState('');
-  const [selectedRole, setSelectedRole] = useState<'owner' | 'admin' | 'family' | 'colleague' | 'guest' | 'custom'>('owner');
-  const [customRoleTitle, setCustomRoleTitle] = useState('');
-  const [customIsAdmin, setCustomIsAdmin] = useState(false);
-  const [enrollPreviewUrl, setEnrollPreviewUrl] = useState<string | null>(null);
-  const [enrollBlob, setEnrollBlob] = useState<Blob | null>(null);
-  const [submittingEnroll, setSubmittingEnroll] = useState(false);
-  const [enrollMsg, setEnrollMsg] = useState('');
 
   // Read visual overlays settings
   const [faceTracking, setFaceTracking] = useState(() => localStorage.getItem('oracle_face_reticles') !== 'false');
@@ -80,9 +141,40 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
   const [cameraError, setCameraError] = useState('');
   const [faceReadState, setFaceReadState] = useState<'checking' | 'ready' | 'error'>('checking');
 
-  // Advanced Camera & Recognition settings (Always in mirror view)
-  const isMirrored = true;
-  const [showDetails, setShowDetails] = useState(false);
+  // Live QR Code Detection & Action State
+  interface DetectedQR {
+    payload: string;
+    is_url: boolean;
+    url?: string | null;
+    box?: [number, number, number, number] | null;
+    lastSeen: number;
+  }
+  const [detectedQR, setDetectedQR] = useState<DetectedQR | null>(null);
+  const [qrBannerDismissed, setQrBannerDismissed] = useState<string | null>(null);
+  const [qrCopied, setQrCopied] = useState(false);
+  const [qrSaved, setQrSaved] = useState(false);
+  const [qrSaving, setQrSaving] = useState(false);
+  const [qrDetection, setQrDetection] = useState(() => localStorage.getItem('oracle_qr_detection') !== 'false');
+  const qrScanningBusy = useRef(false);
+  const lastQrCheckTime = useRef(0);
+
+  // Advanced Camera & Recognition settings
+  const [isMirrored, setIsMirrored] = useState(
+    () => localStorage.getItem('oracle_camera_mirrored') !== 'false'
+  );
+  const [autoIdentifyProducts, setAutoIdentifyProducts] = useState(true);
+  const [productTrack, setProductTrack] = useState<number | null>(null);
+  const [scanGuidance, setScanGuidance] = useState('');
+  const [showCameraControls, setShowCameraControls] = useState(false);
+
+  useEffect(() => {
+    const handleMirrorChange = (event: Event) => {
+      const detail = (event as CustomEvent<boolean>).detail;
+      if (typeof detail === 'boolean') setIsMirrored(detail);
+    };
+    window.addEventListener('oracle_camera_mirror_changed', handleMirrorChange);
+    return () => window.removeEventListener('oracle_camera_mirror_changed', handleMirrorChange);
+  }, []);
 
   // Sentry Auto-Lock Tracking
   const lastRecognizedRef = useRef<number>(Date.now());
@@ -97,7 +189,7 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
     const timeoutMs = timeoutSec * 1000;
 
     const interval = setInterval(() => {
-      const hasRecognizedFace = people.some((p) => p.matched && p.relationship === 'owner' && Date.now() - lastFaceRead.current < 7000);
+      const hasRecognizedFace = people.some((p) => !p.held && p.matched && p.relationship === 'owner' && Date.now() - lastFaceRead.current < 7000);
       if (hasRecognizedFace) {
         lastRecognizedRef.current = Date.now();
         sentryLockedRef.current = false;
@@ -151,11 +243,224 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
     finally { setSwitchingCamera(false); }
   };
 
-  // Periodic optical recognition loop (People Identification + YOLOv8 Detection)
+  // Face localization runs independently so object inference cannot delay it.
+  useEffect(() => {
+    if (!stream || !faceTracking) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    let controller: AbortController | null = null;
+    const canvas = document.createElement('canvas');
+    const readFace = async () => {
+      const started = performance.now();
+      const video = videoRef.current;
+      if (video && video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+        controller = new AbortController();
+        const timeout = setTimeout(() => controller?.abort(), 2000);
+        try {
+          if (canvas.width !== video.videoWidth) canvas.width = video.videoWidth;
+          if (canvas.height !== video.videoHeight) canvas.height = video.videoHeight;
+          canvas.getContext('2d')?.drawImage(video, 0, 0);
+          const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+          if (blob && !stopped && !controller.signal.aborted) {
+            // 1. Face Identification (YuNet + SFace)
+            try {
+              const configuredThreshold = Number(localStorage.getItem('oracle_face_threshold'));
+              const threshold = Number.isFinite(configuredThreshold) ? Math.min(1, Math.max(0.363, configuredThreshold)) : 0.363;
+              const res = await fetchWithAuth(`/api/v1/people/identify?threshold=${threshold}&public_figures=true`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'image/jpeg' },
+                body: blob,
+                signal: controller.signal
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (!controller.signal.aborted) {
+                  setFaceReadState('ready');
+                  lastFaceRead.current = Date.now();
+                  const rawFaces: FaceObservation[] = (data.identified || []).filter((p: FaceObservation) => Array.isArray(p.box) && p.box.length === 4 && p.box.every(Number.isFinite));
+                  rawFaceBoxesRef.current = rawFaces.map(f => f.box);
+                  rawFaceTimeRef.current = Date.now();
+                  const nextFaces = faceConfirmation.current.update(rawFaces, lastFaceRead.current);
+                  setPeople(nextFaces);
+
+                  // Arrival Voice Greeting upon recognized operator
+                  const matchedFace = nextFaces.find(f => !f.held && f.matched && f.name && f.recognition_state === 'confirmed');
+                  if (matchedFace) {
+                    if (matchedFace.id && matchedFace.name) {
+                      setCurrentUser({
+                        id: matchedFace.id,
+                        name: matchedFace.name,
+                        permission: matchedFace.permission === 'administrator' ? 'administrator' : 'standard'
+                      });
+                    }
+                    const greetEnabled = localStorage.getItem('oracle_greet_operator') !== 'false';
+                    const now = Date.now();
+                    const personKey = matchedFace.id || matchedFace.name;
+                    if (greetEnabled && (lastGreetedPerson.current !== personKey || now - lastGreetedTime.current > 300000)) {
+                      lastGreetedPerson.current = personKey;
+                      lastGreetedTime.current = now;
+                      void speakWithKokoro(`Welcome back, ${matchedFace.name}.`, { allowBargeIn: false });
+                    }
+                  }
+                }
+              } else if (!controller.signal.aborted) {
+                faceConfirmation.current.reset();
+                setPeople([]);
+                setFaceReadState('error');
+              }
+            } catch {
+              if (!controller.signal.aborted) {
+                faceConfirmation.current.reset();
+                setPeople([]);
+                setFaceReadState('error');
+              }
+            }
+          }
+        } catch {
+          if (!stopped) {
+            faceConfirmation.current.reset();
+            setPeople([]);
+            setFaceReadState('error');
+          }
+        } finally {
+          clearTimeout(timeout);
+          if (!stopped && controller.signal.aborted) {
+            faceConfirmation.current.reset();
+            setPeople([]);
+            setFaceReadState('checking');
+          }
+        }
+      }
+      if (!stopped) timer = setTimeout(() => void readFace(), Math.max(0, 120 - (performance.now() - started)));
+    };
+    void readFace();
+    return () => { stopped = true; clearTimeout(timer); controller?.abort(); };
+  }, [stream, faceTracking]);
+
+  // Continuous live QR code detection loop (hardware native BarcodeDetector with backend fallback)
+  useEffect(() => {
+    setDetectedQR(null);
+    if (!stream || !qrDetection) return;
+    const request = new AbortController();
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const fallbackCanvas = document.createElement('canvas');
+    let lastFallback = -Infinity;
+
+    const scanQr = async () => {
+      const now = performance.now();
+      const video = videoRef.current;
+      if (!document.hidden && video && video.readyState >= 2 && video.videoWidth && video.videoHeight && !qrScanningBusy.current) {
+        if (now - lastQrCheckTime.current > 350) {
+          lastQrCheckTime.current = now;
+          qrScanningBusy.current = true;
+          try {
+            let found = false;
+
+            // 1. Try browser-native BarcodeDetector if available
+            if ('BarcodeDetector' in window) {
+              try {
+                const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+                const barcodes = await detector.detect(video);
+                if (stopped) return;
+                if (barcodes && barcodes.length > 0) {
+                  const bc = barcodes[0];
+                  const rawVal = String(bc.rawValue || '').trim();
+                  if (rawVal) {
+                    found = true;
+                    const isUrl = /^(https?:\/\/|www\.)/i.test(rawVal);
+                    const url = /^https?:\/\//i.test(rawVal) ? rawVal : (isUrl ? `https://${rawVal}` : null);
+                    const box: [number, number, number, number] = bc.boundingBox
+                      ? [bc.boundingBox.x, bc.boundingBox.y, bc.boundingBox.width, bc.boundingBox.height]
+                      : [video.videoWidth * 0.25, video.videoHeight * 0.25, video.videoWidth * 0.5, video.videoHeight * 0.5];
+                    setDetectedQR({
+                      payload: rawVal,
+                      is_url: isUrl,
+                      url,
+                      box,
+                      lastSeen: Date.now()
+                    });
+                  }
+                }
+              } catch {
+                // native BarcodeDetector failed; proceed to backend check
+              }
+            }
+
+            // 2. Fallback to /api/v1/images/qr (which handles both normal and mirrored webcams)
+            if (!found && !stopped && now - lastFallback >= 1000) {
+              lastFallback = now;
+              const canvas = fallbackCanvas;
+              const scale = Math.min(1, 480 / Math.max(video.videoWidth, video.videoHeight));
+              const width = Math.round(video.videoWidth * scale);
+              const height = Math.round(video.videoHeight * scale);
+              if (canvas.width !== width) canvas.width = width;
+              if (canvas.height !== height) canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+                if (blob && !stopped) {
+                  const res = await fetchWithAuth('/api/v1/images/qr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'image/jpeg' },
+                    body: blob,
+                    signal: request.signal
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.found && data.results?.length > 0 && !stopped) {
+                      const item = data.results[0];
+                      const unscale = 1 / scale;
+                      const box: [number, number, number, number] | null = item.box
+                        ? [item.box[0] * unscale, item.box[1] * unscale, item.box[2] * unscale, item.box[3] * unscale]
+                        : null;
+                      setDetectedQR({
+                        payload: item.payload,
+                        is_url: item.is_url,
+                        url: item.url,
+                        box,
+                        lastSeen: Date.now()
+                      });
+                      found = true;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (!found && !stopped) {
+              setDetectedQR(prev => (prev && Date.now() - prev.lastSeen > 2500 ? null : prev));
+            }
+          } catch {
+            // ignore network/scan errors
+          } finally {
+            qrScanningBusy.current = false;
+          }
+        }
+      }
+      if (!stopped) {
+        timer = setTimeout(() => void scanQr(), 300);
+      }
+    };
+
+    scanQr();
+    return () => {
+      stopped = true;
+      request.abort();
+      clearTimeout(timer);
+    };
+  }, [stream, qrDetection]);
+
+  // Periodic object detection loop
   const processFrame = useCallback(async () => {
-    if (!videoRef.current || !stream || processing.current || (!faceTracking && !objectDetection)) return;
+    if (document.hidden || !videoRef.current || !stream || processing.current || !objectDetection) return;
     const video = videoRef.current;
     if (video.readyState < 2 || video.videoWidth === 0 || video.videoHeight === 0) return;
+
+    // Keep a slow refresh for paused or static streams so tracks can still confirm and expire.
+    if (lastObjectFrame.current === video.currentTime && performance.now() - lastAnalyzedTimeRef.current < 800) return;
+    lastObjectFrame.current = video.currentTime;
 
     // Motion Gate: check 64x48 thumbnail for significant scene changes
     if (!motionCanvasRef.current) {
@@ -177,11 +482,11 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
         }
         const avgDiff = diff / (total / 4);
         const timeSinceLast = performance.now() - lastAnalyzedTimeRef.current;
-        if (avgDiff < 3.0 && timeSinceLast < 800) {
+        if (avgDiff < 3.0 && timeSinceLast < 300) {
           hasMotion = false;
         }
       }
-      prevThumbnailRef.current = new Uint8Array(imgData);
+      prevThumbnailRef.current = imgData;
     }
 
     if (!hasMotion) return;
@@ -193,60 +498,28 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
     const canvas = canvasRef.current;
     const vw = video.videoWidth;
     const vh = video.videoHeight;
-    canvas.width = vw;
-    canvas.height = vh;
+    if (canvas.width !== vw) canvas.width = vw;
+    if (canvas.height !== vh) canvas.height = vh;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, vw, vh);
 
     processing.current = true;
-    setIsProcessing(true);
     const controller = new AbortController();
     activeRequest.current = controller;
     const t0 = performance.now();
 
     try {
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82));
-      if (!blob) return;
-
-      // 1. Face Identification (YuNet + SFace)
-      if (faceTracking) try {
-        const configuredThreshold = Number(localStorage.getItem('oracle_face_threshold'));
-        const threshold = Number.isFinite(configuredThreshold) ? Math.min(1, Math.max(0.363, configuredThreshold)) : 0.363;
-        const res = await fetchWithAuth(`/api/v1/people/identify?threshold=${threshold}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'image/jpeg' },
-          body: blob,
-          signal: controller.signal
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (!controller.signal.aborted) {
-            setFaceReadState('ready');
-            lastFaceRead.current = Date.now();
-            const rawFaces: FaceObservation[] = (data.identified || []).filter((p: FaceObservation) => Array.isArray(p.box) && p.box.length === 4 && p.box.every(Number.isFinite));
-            const nextFaces = faceConfirmation.current.update(rawFaces, lastFaceRead.current);
-            setPeople(nextFaces);
-          }
-        } else if (!controller.signal.aborted) {
-          faceConfirmation.current.reset();
-          setPeople([]);
-          setFaceReadState('error');
-        }
-      } catch {
-        if (!controller.signal.aborted) {
-          faceConfirmation.current.reset();
-          setPeople([]);
-          setFaceReadState('error');
-        }
-      }
+      // Preserve thin object edges; JPEG compression can erase small tools.
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'));
+      if (!blob || controller.signal.aborted) return;
 
       // 2. Object Detection (YOLOv8n ONNX)
       if (objectDetection) try {
-        const res = await fetchWithAuth(`/api/v1/vision/detect?segment=${foregroundModeRef.current !== 'off'}&confidence=0.25`, {
+        const res = await fetchWithAuth(`/api/v1/vision/detect?segment=${foregroundModeRef.current !== 'off'}&confidence=0.35`, {
           method: 'POST',
-          headers: { 'Content-Type': 'image/jpeg' },
+          headers: { 'Content-Type': 'image/png' },
           body: blob,
           signal: controller.signal
         });
@@ -254,8 +527,10 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
           const data = await res.json();
           const rawList = data.detections || [];
           const normalized: DetectedObject[] = rawList.filter((d: any) => typeof (d.class || d.class_name) === 'string' && Number.isFinite(d.confidence) && Array.isArray(d.box) && d.box.length === 4 && d.box.every(Number.isFinite));
+          if (controller.signal.aborted) return;
+          const confirmed = objectConfirmation.current.update(normalized.map(d => ({ ...d, class: d.class || d.class_name! })), performance.now()).filter(d => d.confirmed);
           const available = new Set(tracks.current);
-          const tracked = normalized.map((d) => {
+          const tracked = confirmed.map((d) => {
             let match: DetectedObject | undefined;
             let best = 0.25;
             for (const previous of available) {
@@ -271,18 +546,18 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
             return { ...d, box, trackId: match?.trackId ?? nextTrackId.current++ };
           });
           if (!controller.signal.aborted) {
+            lastObjectRead.current = performance.now();
             tracks.current = tracked;
             setObjects(tracked);
-            setReadError('');
           }
-        } else if (!controller.signal.aborted) {
-          setReadError(`Vision request failed (${res.status}).`);
+        } else if (res.status !== 429 && !controller.signal.aborted) {
+          objectConfirmation.current.reset();
           tracks.current = [];
           setObjects([]);
         }
       } catch {
         if (!controller.signal.aborted) {
-          setReadError('Vision connection unavailable.');
+          objectConfirmation.current.reset();
           tracks.current = [];
           setObjects([]);
         }
@@ -294,21 +569,21 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
     } catch {
       // ignore
     } finally {
-      if (activeRequest.current === controller) processing.current = false;
-      if (!controller.signal.aborted) {
-        setIsProcessing(false);
+      if (activeRequest.current === controller) {
+        activeRequest.current = null;
+        processing.current = false;
       }
     }
-  }, [stream, faceTracking, objectDetection]);
+  }, [stream, objectDetection]);
 
   useEffect(() => {
     faceConfirmation.current.reset();
     lastFaceRead.current = 0;
     setFaceReadState('checking');
     setCanCapture(false);
-    setReadError('');
-    setIsProcessing(false);
+    setSnapshotPending(false);
     tracks.current = [];
+    objectConfirmation.current.reset();
     setObjects([]);
     setPeople([]);
     setSelectedTrack(null);
@@ -350,6 +625,12 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
 
   useEffect(() => {
     const timer = setInterval(() => {
+      if (lastObjectRead.current && performance.now() - lastObjectRead.current > 1500) {
+        tracks.current = [];
+        setObjects([]);
+        objectConfirmation.current.reset();
+        lastObjectRead.current = 0;
+      }
       if (lastFaceRead.current && Date.now() - lastFaceRead.current >= 7000) {
         setPeople([]);
         setFaceReadState('checking');
@@ -371,123 +652,30 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
 
   useEffect(() => {
     tracks.current = [];
+    objectConfirmation.current.reset();
     setObjects([]);
     lastAnalyzedTimeRef.current = 0;
-    setReadError('');
   }, [objectDetection]);
 
-  // Start 1-Click Face Enrollment
-  const startEnrollment = () => {
-    if (!videoRef.current) return;
-    const video = videoRef.current;
-    if (video.readyState < 2 || !video.videoWidth) return;
-
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        setEnrollBlob(blob);
-        setEnrollPreviewUrl(URL.createObjectURL(blob));
-        setIsEnrollingFace(true);
-        setEnrollMsg('');
-      }
-    }, 'image/jpeg', 0.95);
-  };
-
-  // Submit enrollment
-  const submitEnrollment = async () => {
-    if (!enrollName.trim()) {
-      setEnrollMsg('Enter a name.');
-      return;
-    }
-    if (!enrollBlob) {
-      setEnrollMsg('Missing face image.');
-      return;
-    }
-
-    setSubmittingEnroll(true);
-    setEnrollMsg('Analyzing face & committing SFace embedding...');
-    try {
-      const roleConfig = ROLE_OPTIONS.find((r) => r.id === selectedRole) || ROLE_OPTIONS[0];
-      const roleTitle = selectedRole === 'custom'
-        ? (customRoleTitle.trim() || 'Custom Role')
-        : roleConfig.defaultTitle;
-      const finalNotes = enrollNotes.trim()
-        ? `${roleTitle} • ${enrollNotes.trim()}`
-        : roleTitle;
-      const relationship = selectedRole === 'custom' ? 'colleague' : roleConfig.rel;
-      const permission = selectedRole === 'custom'
-        ? (customIsAdmin ? 'administrator' : 'standard')
-        : roleConfig.perm;
-
-      const params = new URLSearchParams({
-        name: enrollName.trim(),
-        notes: finalNotes
-      });
-      const res = await fetchWithAuth(`/api/v1/people/enroll?${params.toString()}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'image/jpeg' },
-        body: enrollBlob
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.detail || 'Enrollment failed');
-      }
-
-      soundEffects.playWakeChime();
-      const saved = await res.json();
-
-      if (saved.id) {
-        try {
-          await fetchWithAuth(`/api/v1/people/${saved.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              relationship,
-              permission,
-              notes: finalNotes
-            })
-          });
-        } catch (patchErr) {
-          console.warn('Failed to update person clearance attributes:', patchErr);
-        }
-      }
-
-      setEnrollMsg('Asset registered successfully!');
-      setTimeout(() => {
-        setIsEnrollingFace(false);
-        setEnrollPreviewUrl(null);
-        setEnrollBlob(null);
-        setEnrollName('');
-        setEnrollNotes('');
-        setSelectedRole('owner');
-        setCustomRoleTitle('');
-        setCustomIsAdmin(false);
-        processFrame();
-      }, 700);
-    } catch (err) {
-      setEnrollMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      setSubmittingEnroll(false);
-    }
-  };
-
-  // Run recognition loop every 1.5 seconds while stream is active
+  // Object inference has its own cadence, independent of face tracking.
   useEffect(() => {
-    if (!stream) return;
-    const interval = setInterval(processFrame, 500);
+    if (!stream || !objectDetection) return;
+    lastObjectFrame.current = null;
+    let interval: number | undefined;
+    const updateVisibility = () => {
+      window.clearInterval(interval);
+      if (document.hidden) activeRequest.current?.abort();
+      else interval = window.setInterval(processFrame, 200);
+    };
+    updateVisibility();
+    document.addEventListener('visibilitychange', updateVisibility);
     return () => {
-      clearInterval(interval);
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', updateVisibility);
       activeRequest.current?.abort();
       processing.current = false;
     };
-  }, [stream, processFrame]);
+  }, [stream, objectDetection, processFrame]);
 
   // Guaranteed lock handoff for boot sequence
   const onLockCompleteRef = useRef(onLockComplete);
@@ -506,9 +694,9 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
 
   // Take current freeze frame and hand off to parent
   const handleSnap = () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current || snapshotPending) return;
     const video = videoRef.current;
-    if (video.readyState < 2 || !video.videoWidth) return;
+    if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) return;
     const canvas = document.createElement('canvas');
     const scale = Math.min(1, 2000 / Math.max(video.videoWidth, video.videoHeight));
     canvas.width = Math.round(video.videoWidth * scale);
@@ -516,16 +704,109 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    setSnapshotPending(true);
     canvas.toBlob((blob) => {
-      if (blob && onSnapshot) {
-        onSnapshot(blob);
-      }
+      if (videoRef.current !== video || video.srcObject !== stream) return;
+      setSnapshotPending(false);
+      if (blob) onSnapshot?.(blob);
+      else setCameraError('Could not capture this frame. Try again.');
     }, 'image/jpeg', 0.9);
+  };
+
+  const handleSaveUnknown = (unknown: FaceObservation) => {
+    const trackId = unknown.trackId;
+    if (!onSaveUnknownSnapshot || trackId === undefined) return;
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    if (video.readyState < 2 || !video.videoWidth) return;
+    const [x, y, w, h] = unknown.box;
+    const paddingX = Math.round(w * 0.65);
+    const paddingY = Math.round(h * 0.8);
+    const cropX = Math.max(0, Math.round(x - paddingX));
+    const cropY = Math.max(0, Math.round(y - paddingY));
+    const cropRight = Math.min(video.videoWidth, Math.round(x + w + paddingX));
+    const cropBottom = Math.min(video.videoHeight, Math.round(y + h + paddingY));
+    const cropWidth = Math.max(1, cropRight - cropX);
+    const cropHeight = Math.max(1, cropBottom - cropY);
+    const canvas = document.createElement('canvas');
+    const scale = Math.min(1, 1200 / Math.max(cropWidth, cropHeight));
+    canvas.width = Math.round(cropWidth * scale);
+    canvas.height = Math.round(cropHeight * scale);
+    canvas.getContext('2d')?.drawImage(video, cropX, cropY, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(async (blob) => {
+      if (!blob || videoRef.current !== video || video.srcObject !== stream) return;
+      if (await onSaveUnknownSnapshot(blob, `unknown-${trackId}`)) savedUnknownTracks.current.add(trackId);
+    }, 'image/jpeg', 0.9);
+  };
+
+  useEffect(() => {
+    const unknown = people.find(person => person.recognition_state === 'unknown' && !person.public_figure &&
+      person.trackId !== undefined && !savedUnknownTracks.current.has(person.trackId));
+    if (
+      localStorage.getItem('oracle_save_unknown_frames') === 'false' ||
+      !onSaveUnknownSnapshot ||
+      !unknown ||
+      Date.now() - lastUnknownAutoSave.current < 30000
+    ) return;
+    lastUnknownAutoSave.current = Date.now();
+    handleSaveUnknown(unknown);
+  }, [people, onSaveUnknownSnapshot]);
+
+  const handleCopyQR = async () => {
+    if (!detectedQR) return;
+    try {
+      await navigator.clipboard.writeText(detectedQR.payload);
+      setQrCopied(true);
+      setTimeout(() => setQrCopied(false), 2000);
+    } catch {}
+  };
+
+  const handleVisitQR = () => {
+    if (!detectedQR?.url) return;
+    window.open(detectedQR.url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleSaveQR = async () => {
+    if (!detectedQR || qrSaving) return;
+    setQrSaving(true);
+    try {
+      const title = detectedQR.is_url
+        ? `QR Link: ${detectedQR.url?.replace(/^https?:\/\//i, '').slice(0, 40)}`
+        : `QR Code: ${detectedQR.payload.slice(0, 30)}`;
+      const res = await fetchWithAuth('/api/v1/records/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          text: detectedQR.payload
+        })
+      });
+      if (res.ok) {
+        setQrSaved(true);
+        setTimeout(() => setQrSaved(false), 3000);
+      }
+    } catch {
+    } finally {
+      setQrSaving(false);
+    }
   };
 
   const subjects = combineSubjects(objects, people);
   const effectivePrimaryKey = choosePrimary(subjects, primaryKey);
   const primarySubject = subjects.find((subject) => subject.key === effectivePrimaryKey);
+  const { width: vw, height: vh } = frameSize;
+  const labelHeight = vw * .075;
+  const labelWidth = vw * .34;
+  const labelGap = vw * .012;
+  const faceSubjects = subjects.filter(subject => subject.face).map(subject => {
+    const [x, y, w, h] = subject.face!.box;
+    const width = Math.min(vw, x + w * 1.24) - Math.max(0, x - w * .24);
+    const top = Math.max(0, y - h * .299);
+    const left = Math.max(0, x - w * .24);
+    return { subject, left: isMirrored ? vw - left - width : left, top, width,
+      height: Math.min(vh, y + h * 1.273) - top };
+  });
+  const occupiedLabels: { left: number; top: number; width: number; height: number }[] = [];
   const primaryFace = primarySubject?.face;
 
 
@@ -536,10 +817,159 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
     setPrimaryKey((current) => choosePrimary(combineSubjects(objects, people), current));
   }, [objects, people]);
 
-  const vw = videoRef.current?.videoWidth || 640;
-  const vh = videoRef.current?.videoHeight || 480;
+  const [unknownItem, setUnknownItem] = useState<(DetectedObject & { trackId: number }) | null>(null);
+  const trackingExclusions = useEffectEvent(() => {
+    const exclusions: [number, number, number, number][] = [];
+
+    // 1. Confirmed / tracked people faces - padded to cover entire head, hair, glasses, ears, and neck
+    for (const p of people) {
+      if (Array.isArray(p.box) && p.box.length === 4) {
+        const [x, y, w, h] = p.box;
+        const padX = w * 0.35;
+        const padYTop = h * 0.45;
+        const padYBottom = h * 0.35;
+        const ex = Math.max(0, x - padX);
+        const ey = Math.max(0, y - padYTop);
+        const ew = Math.min(vw - ex, w + padX * 2);
+        const eh = Math.min(vh - ey, h + padYTop + padYBottom);
+        exclusions.push([ex / vw * trackingWidth, ey / vh * trackingHeight, ew / vw * trackingWidth, eh / vh * trackingHeight]);
+      }
+    }
+
+    // 2. Raw unconfirmed face detections (from YuNet identify calls before multi-frame confirmation)
+    if (Date.now() - rawFaceTimeRef.current < 2500) {
+      for (const [x, y, w, h] of rawFaceBoxesRef.current) {
+        const padX = w * 0.35;
+        const padYTop = h * 0.45;
+        const padYBottom = h * 0.35;
+        const ex = Math.max(0, x - padX);
+        const ey = Math.max(0, y - padYTop);
+        const ew = Math.min(vw - ex, w + padX * 2);
+        const eh = Math.min(vh - ey, h + padYTop + padYBottom);
+        exclusions.push([ex / vw * trackingWidth, ey / vh * trackingHeight, ew / vw * trackingWidth, eh / vh * trackingHeight]);
+      }
+    }
+
+    // 3. Detected objects (e.g. person bodies from YOLO, existing products)
+    for (const obj of objects) {
+      if (Array.isArray(obj.box) && obj.box.length === 4) {
+        const [x, y, w, h] = obj.box;
+        exclusions.push([x / vw * trackingWidth, y / vh * trackingHeight, w / vw * trackingWidth, h / vh * trackingHeight]);
+      }
+    }
+
+    return exclusions;
+  });
+
+  // Reactive safeguard: immediately clear unknownItem if any face overlaps with it
+  useEffect(() => {
+    if (!unknownItem) return;
+    const [ux, uy, uw, uh] = unknownItem.box;
+    const allFaces = [
+      ...people.map(p => p.box),
+      ...(Date.now() - rawFaceTimeRef.current < 2500 ? rawFaceBoxesRef.current : [])
+    ];
+    for (const [fx, fy, fw, fh] of allFaces) {
+      const ix = Math.max(0, Math.min(ux + uw, fx + fw * 1.35) - Math.max(ux, fx - fw * 0.35));
+      const iy = Math.max(0, Math.min(uy + uh, fy + fh * 1.35) - Math.max(uy, fy - fh * 0.45));
+      const inter = ix * iy;
+      if (inter > 0 && inter / (uw * uh) > 0.12) {
+        setUnknownItem(null);
+        break;
+      }
+    }
+  }, [people, unknownItem]);
+
+  useEffect(() => {
+    setUnknownItem(null);
+    if (!stream || !objectDetection) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = trackingWidth;
+    canvas.height = trackingHeight;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (!context) return;
+    let tracker = new UnknownItemTracking();
+    let trackId = 0;
+    let visible = false;
+    let lastTime = -1;
+    const streamStartTime = Date.now();
+    const reset = () => {
+      tracker = new UnknownItemTracking();
+      visible = false;
+      lastTime = -1;
+      setUnknownItem(null);
+    };
+    const timer = window.setInterval(() => {
+      const video = videoRef.current;
+      if (document.hidden || !video || video.srcObject !== stream || video.readyState < 2 ||
+          video.currentTime === lastTime) return;
+      if (Date.now() - streamStartTime < 600) return;
+      lastTime = video.currentTime;
+
+      // Fast local FaceDetector check (zero-latency browser API if supported)
+      if ('FaceDetector' in window && Date.now() - rawFaceTimeRef.current > 400) {
+        try {
+          const detector = new (window as any).FaceDetector({ fastMode: true, maxDetectedFaces: 3 });
+          detector.detect(video).then((detected: any[]) => {
+            if (detected && detected.length > 0) {
+              rawFaceBoxesRef.current = detected.map((f: any) => [
+                f.boundingBox.x,
+                f.boundingBox.y,
+                f.boundingBox.width,
+                f.boundingBox.height
+              ]);
+              rawFaceTimeRef.current = Date.now();
+            }
+          }).catch(() => {});
+        } catch {
+          // ignore
+        }
+      }
+
+      context.drawImage(video, 0, 0, trackingWidth, trackingHeight);
+      const pixels = context.getImageData(0, 0, trackingWidth, trackingHeight).data;
+      const image = new Uint8ClampedArray(trackingWidth * trackingHeight);
+      for (let index = 0; index < image.length; index++) {
+        const offset = index * 4;
+        image[index] = .299 * pixels[offset] + .587 * pixels[offset + 1] + .114 * pixels[offset + 2];
+      }
+      const box = tracker.update(image, trackingExclusions());
+      if (!box) {
+        visible = false;
+        setUnknownItem(null);
+        return;
+      }
+      if (!visible) trackId--;
+      visible = true;
+      const [x, y, w, h] = box;
+      setUnknownItem({ trackId, class: 'Unidentified item', confidence: 0,
+        box: [x / trackingWidth * vw, y / trackingHeight * vh, w / trackingWidth * vw, h / trackingHeight * vh] });
+    }, 125);
+    document.addEventListener('visibilitychange', reset);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', reset);
+    };
+  }, [stream, objectDetection, vw, vh]);
+  const productTargets = objectDetection ? objects.filter(
+    (obj): obj is DetectedObject & { trackId: number } =>
+      obj.trackId !== undefined && (obj.class || obj.class_name) !== 'person'
+  ) : [];
+  const centeredTargets = productTargets.filter(({ box: [x, y, w, h] }) =>
+    Math.abs((x + w / 2) / vw - .5) < .22 && Math.abs((y + h / 2) / vh - .5) < .25);
+  const distanceFromCenter = ({ box: [x, y, w, h] }: DetectedObject) =>
+    Math.hypot((x + w / 2) / vw - .5, (y + h / 2) / vh - .5);
+  const trackingTargets = unknownItem && objectDetection ? [...productTargets, unknownItem] : productTargets;
+  const selectedProduct = trackingTargets.find(obj => obj.trackId === productTrack);
+  const productTarget = selectedProduct ?? unknownItem ??
+    centeredTargets.sort((a, b) => distanceFromCenter(a) - distanceFromCenter(b))[0];
+  const activeProductId = productTarget?.trackId;
+
+  useEffect(() => { setProductTrack(null); }, [stream]);
 
   return (
+    <>
+    <div className={`oracle-camera-workspace${expanded ? ' is-expanded' : ''}`}>
     <motion.div
       className="oracle-diag-card oracle-camera-card"
       initial={{ opacity: 0, scale: 0.96 }}
@@ -553,14 +983,18 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
           Camera
         </span>
         <div className="card-header-actions">
-          <span className="card-status-badge">
-            <span className="card-status-dot" style={{ background: readError ? '#ef4444' : canCapture ? '#22c55e' : '#94a3b8' }} />
-            {readError ? 'Error' : canCapture ? 'Live' : 'Connecting…'}
-          </span>
-          <button type="button" className="card-header-icon-btn" aria-label="Camera settings" aria-expanded={showDetails} aria-controls="camera-settings" onClick={() => setShowDetails(!showDetails)}>
-            <MoreHorizontal size={18} />
+          <button ref={detailsButton} type="button" className="card-header-icon-btn" aria-label="Product details"
+            aria-expanded={detailsOpen} aria-controls="camera-product-details" onClick={() => setDetailsOpen(open => !open)}>
+            <FileText size={14} />
           </button>
-
+          <button ref={expandButton} type="button" className="card-header-icon-btn"
+            aria-label={expanded ? 'Collapse camera' : 'Expand camera'} aria-pressed={expanded}
+            onClick={() => { if (expanded) collapse(); else { setExpanded(true); setDetailsOpen(true); } }}>
+            {expanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+          <button type="button" className="card-header-icon-btn" aria-label="Camera settings" aria-expanded={showCameraControls} aria-controls="camera-settings" onClick={() => setShowCameraControls(open => !open)}>
+            <SlidersHorizontal size={14} />
+          </button>
           {onClose && (
             <button
               type="button"
@@ -579,7 +1013,12 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
       <div className="camera-viewport-frame" style={{ aspectRatio: `${vw} / ${vh}` }}>
         <video
           ref={videoRef}
-          onLoadedData={() => setCanCapture(true)}
+          onLoadedData={event => {
+            syncFrameSize(event);
+            setCanCapture(true);
+          }}
+          onResize={syncFrameSize}
+          onEmptied={() => setCanCapture(false)}
           playsInline
           muted
           className="cctv-video-stream"
@@ -598,283 +1037,216 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
           }}
         />
         {/* Reticles & Bounding Boxes (Person of Interest Machine HUD) */}
-        {faceTracking && subjects.filter(subject => subject.face).map((subject) => {
-          const outlineBox = subject.face?.box;
-          if (!outlineBox) return null;
-          const [x, y, w, h] = outlineBox;
-          const isFace = true;
-          const padX = isFace ? w * 0.16 : 0;
-          const padY = isFace ? h * 0.20 : 0;
-          const framedX = Math.max(0, x - padX);
-          const framedY = Math.max(0, y - padY * 1.15);
-          const framedW = Math.min(vw - framedX, w + padX * 2);
-          const framedH = Math.min(vh - framedY, h + padY * 2.2);
-          const left = isMirrored ? vw - framedX - framedW : framedX;
+        {faceTracking && faceSubjects.map(({ subject, left, top: framedY, width: framedW, height: framedH }) => {
+          const centered = Math.max(0, Math.min(vw - labelWidth, left + (framedW - labelWidth) / 2));
+          const middle = Math.max(0, Math.min(vh - labelHeight, framedY + (framedH - labelHeight) / 2));
+          const position = [
+            [centered, framedY - labelHeight - labelGap],
+            [centered, framedY + framedH + labelGap],
+            [left + framedW + labelGap, middle],
+            [left - labelWidth - labelGap, middle],
+          ].map(([left, top]) => ({ left, top, width: labelWidth, height: labelHeight }))
+            .find(label => label.left >= 0 && label.top >= 0 &&
+              label.left + label.width <= vw && label.top + label.height <= vh &&
+              ![...faceSubjects, ...occupiedLabels].some(box =>
+                label.left < box.left + box.width && label.left + label.width > box.left &&
+                label.top < box.top + box.height && label.top + label.height > box.top));
+          if (position) occupiedLabels.push(position);
 
           const subjectIsMatched = !!subject.face?.matched;
-          const reticleColor = subjectIsMatched ? '#4ade80' : subject.key === effectivePrimaryKey ? '#38bdf8' : 'rgba(157, 180, 211, 0.65)';
+          const face = subject.face!;
+          const confirming = face.recognition_state === 'confirming';
+          const watched = subjectIsMatched && !face.held && face.id && localStorage.getItem(`oracle_watchlist_${face.id}`) !== null;
+          let reticleColor = confirming ? '#91b7df' : '#a7b4c4';
+          let RoleIcon = null;
+          if (watched) {
+            reticleColor = '#fbbf24';
+            RoleIcon = Flag;
+          } else if (subjectIsMatched) {
+            if (face.relationship === 'owner') {
+              reticleColor = '#4ade80';
+              RoleIcon = face.permission === 'administrator' ? ShieldCheck : UserRound;
+            } else if (face.permission === 'administrator') {
+              reticleColor = '#5eead4';
+              RoleIcon = Shield;
+            } else if (face.relationship === 'family' || face.relationship === 'friend') {
+              reticleColor = '#c4b5fd';
+              RoleIcon = Heart;
+            } else if (face.relationship === 'guest') {
+              reticleColor = '#cbd5e1';
+              RoleIcon = UserRound;
+            } else {
+              reticleColor = '#93b5da';
+              RoleIcon = cameraProfileRole(face) === 'Colleague' ? Users : UserRound;
+            }
+          }
 
           return (
             <div
-              key={subject.key}
+              key={`face-${subject.face!.trackId}`}
               data-subject={subject.key}
-              aria-hidden="true"
-              className="poi-target-container"
+              aria-hidden={subjectIsMatched && position ? undefined : true}
+              className={`poi-target-container${confirming ? ' camera-face-confirming' : ''}`}
               style={{
+                '--camera-face-accent': subjectIsMatched ? reticleColor : 'transparent',
                 left: `${(left / vw) * 100}%`,
                 top: `${(framedY / vh) * 100}%`,
                 width: `${(framedW / vw) * 100}%`,
                 height: `${(framedH / vh) * 100}%`
-              }}
+              } as React.CSSProperties}
             >
               {/* Minimalist Floating Name Badge */}
-              <div
-                className="live-detection-name-badge"
+              {position && <div
+                className="live-detection-name-badge camera-positioned-label"
+                title={subjectIsMatched ? `${cameraProfileRole(face)} · ${face.permission === 'administrator' ? 'Administrator' : 'Standard'}` : undefined}
                 style={{
-                  top: framedY / vh > 0.12 ? '-28px' : '4px',
-                  left: left > vw / 2 ? 'auto' : '0',
-                  right: left > vw / 2 ? '0' : 'auto',
-                  maxWidth: `calc(${(left > vw / 2 ? (left + framedW) / vw : (vw - left) / vw) * 100}cqw - 8px)`,
+                  top: `${(position.top - framedY) / vw * 100}cqw`,
+                  left: `${(position.left - left) / vw * 100}cqw`,
                   borderColor: reticleColor,
                   color: reticleColor,
                   boxShadow: `0 0 14px ${reticleColor}33`
                 }}
               >
-                <span className="live-name-dot" style={{ background: reticleColor }} />
+                {RoleIcon
+                  ? <RoleIcon size={11} aria-hidden="true" />
+                  : <span className="live-name-dot" style={{ background: reticleColor }} />}
                 <span className="live-name-text">
-                  {subjectIsMatched
-                    ? subject.face?.name
+                  {subjectIsMatched ? <button type="button" className="camera-watchlist-button"
+                    onClick={() => setIdentityReview({ face, seen: face.lastSeen ?? lastFaceRead.current,
+                      reason: watched ? localStorage.getItem(`oracle_watchlist_${face.id}`) : null })}>
+                    {watched ? 'Review match' : face.name}
+                  </button>
                     : subject.face
-                    ? (subject.face.recognition_state === 'confirming' ? 'Identifying…' : 'Unidentified')
+                    ? (subject.face.public_figure
+                      ? `Likely public figure · ${subject.face.public_figure.name}`
+                      : subject.face.recognition_state === 'confirming'
+                      ? 'Identifying…'
+                      : subject.face.recognition_state === 'uncertain' && subject.face.possible_match
+                      ? `Possible match · ${subject.face.possible_match}`
+                      : 'Unidentified')
                     : '• SUBJECT'}
                 </span>
-              </div>
+              </div>}
             </div>
           );
         })}
 
-        {objectDetection && objects.filter((obj) => (obj.class || obj.class_name) !== 'person').map((obj) => {
+        {/* Real-time QR Code Bounding Reticle */}
+        {detectedQR?.box && (
+          <div
+            className="camera-qr-reticle"
+            style={{
+              left: `${((isMirrored ? vw - detectedQR.box[0] - detectedQR.box[2] : detectedQR.box[0]) / vw) * 100}%`,
+              top: `${(detectedQR.box[1] / vh) * 100}%`,
+              width: `${(detectedQR.box[2] / vw) * 100}%`,
+              height: `${(detectedQR.box[3] / vh) * 100}%`
+            }}
+          >
+            <div className="camera-qr-corner tl" />
+            <div className="camera-qr-corner tr" />
+            <div className="camera-qr-corner bl" />
+            <div className="camera-qr-corner br" />
+            <div className="camera-qr-reticle-pill">
+              <QrCode size={10} />
+              <span>QR DETECTED</span>
+            </div>
+          </div>
+        )}
+
+        {trackingTargets.map((obj) => {
           const [x, y, w, h] = obj.box;
           const left = isMirrored ? vw - x - w : x;
           const label = String(obj.class || obj.class_name || 'Object').toUpperCase();
           const conf = Math.round((obj.confidence || 0) * 100);
           return (
-            <div
+            <button
               key={`object-${obj.trackId}`}
+              type="button"
               className="camera-object-outline"
-              aria-hidden="true"
+              aria-label={`Select ${label.toLowerCase()} for scanning`}
+              aria-pressed={activeProductId === obj.trackId}
+              onClick={() => setProductTrack(obj.trackId)}
               style={{ left: `${left / vw * 100}%`, top: `${y / vh * 100}%`, width: `${w / vw * 100}%`, height: `${h / vh * 100}%` }}
             >
-              <div className="object-label-pill">
+              <span className="object-label-pill">
                 <span className="object-label-dot" />
-                <span className="object-label-text">{label}</span>
+                <span className="object-label-text">{obj.trackId < 0 ? 'Tracking item'
+                  : activeProductId === obj.trackId ? `${label} · SCAN TARGET` : label}</span>
                 {conf > 0 && <span className="object-label-conf">{conf}%</span>}
-              </div>
-            </div>
+              </span>
+            </button>
           );
         })}
 
-        {/* In-Viewfinder Face Enrollment Overlay */}
-        {isEnrollingFace && (
-          <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(10, 13, 18, 0.88)',
-              zIndex: 50,
-              display: 'flex',
-              flexDirection: 'column',
-              padding: '16px',
-              justifyContent: 'center',
-              alignItems: 'center',
-              backdropFilter: 'blur(20px)'
-            }}
-          >
-            <div
-              style={{
-                width: '100%',
-                maxWidth: '280px',
-                background: 'rgba(15, 18, 24, 0.95)',
-                border: '1px solid rgba(232, 235, 239, 0.08)',
-                borderRadius: '12px',
-                boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(232, 235, 239, 0.04)',
-                padding: '16px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '10px'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '10.5px', fontWeight: 600, color: 'var(--accent)', letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-                  Enroll Face Biometrics
-                </span>
-                <button
-                  onClick={() => setIsEnrollingFace(false)}
-                  style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-
-              {enrollPreviewUrl && (
-                <img
-                  src={enrollPreviewUrl}
-                  alt="Captured face"
-                  style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '8px', alignSelf: 'center', border: '1px solid rgba(232, 235, 239, 0.1)' }}
-                />
-              )}
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <label style={{ fontSize: '8px', fontFamily: "'JetBrains Mono', monospace", color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Operator Name *
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Sahan"
-                  value={enrollName}
-                  autoFocus
-                  onChange={(e) => setEnrollName(e.target.value)}
-                  style={{
-                    background: 'rgba(232, 235, 239, 0.04)',
-                    border: '1px solid rgba(232, 235, 239, 0.08)',
-                    borderRadius: '6px',
-                    padding: '6px 10px',
-                    color: '#ffffff',
-                    fontSize: '11px',
-                    fontFamily: 'Inter, sans-serif',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <label style={{ fontSize: '8px', fontFamily: "'JetBrains Mono', monospace", color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Clearance Role *
-                </label>
-                <select
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value as any)}
-                  style={{
-                    background: 'rgba(232, 235, 239, 0.04)',
-                    border: '1px solid rgba(232, 235, 239, 0.08)',
-                    borderRadius: '6px',
-                    padding: '6px 8px',
-                    color: '#ffffff',
-                    fontSize: '10.5px',
-                    fontFamily: 'Inter, sans-serif',
-                    outline: 'none',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {ROLE_OPTIONS.map((opt) => (
-                    <option key={opt.id} value={opt.id} style={{ background: '#0e1117', color: opt.id === 'custom' ? '#9db4d3' : '#ffffff' }}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedRole === 'custom' && (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '6px',
-                    padding: '8px',
-                    background: 'rgba(157, 180, 211, 0.04)',
-                    border: '1px solid rgba(157, 180, 211, 0.2)',
-                    borderRadius: '6px'
-                  }}
-                >
-                  <label style={{ fontSize: '8px', fontFamily: "'JetBrains Mono', monospace", color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Custom Role Title *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Lead Architect, Security Officer"
-                    value={customRoleTitle}
-                    onChange={(e) => setCustomRoleTitle(e.target.value)}
-                    style={{
-                      background: 'rgba(232, 235, 239, 0.04)',
-                      border: '1px solid rgba(157, 180, 211, 0.3)',
-                      borderRadius: '5px',
-                      padding: '5px 8px',
-                      color: '#ffffff',
-                      fontSize: '10.5px',
-                      fontFamily: 'Inter, sans-serif',
-                      outline: 'none'
-                    }}
-                  />
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '2px' }}>
-                    <span style={{ fontSize: '9px', color: 'var(--muted)' }}>Alpha-1 Admin</span>
-                    <input
-                      type="checkbox"
-                      checked={customIsAdmin}
-                      onChange={(e) => setCustomIsAdmin(e.target.checked)}
-                      style={{ cursor: 'pointer', accentColor: '#4ade80' }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <label style={{ fontSize: '8px', fontFamily: "'JetBrains Mono', monospace", color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Clearance Notes (Optional)
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Zone A access"
-                  value={enrollNotes}
-                  onChange={(e) => setEnrollNotes(e.target.value)}
-                  style={{
-                    background: 'rgba(232, 235, 239, 0.04)',
-                    border: '1px solid rgba(232, 235, 239, 0.08)',
-                    borderRadius: '6px',
-                    padding: '6px 10px',
-                    color: '#ffffff',
-                    fontSize: '11px',
-                    fontFamily: 'Inter, sans-serif',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-
-              {enrollMsg && (
-                <span style={{ fontSize: '10px', color: enrollMsg.includes('Error') ? '#f87171' : '#4ade80' }}>
-                  {enrollMsg}
-                </span>
-              )}
-
-              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-                <button
-                  type="button"
-                  onClick={submitEnrollment}
-                  disabled={submittingEnroll}
-                  className="oracle-btn oracle-btn-primary"
-                  style={{ flex: 1 }}
-                >
-                  <ShieldCheck size={13} strokeWidth={2} />
-                  <span>{submittingEnroll ? 'SAVING...' : 'COMMIT BIOMETRICS'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEnrollingFace(false)}
-                  className="oracle-btn oracle-btn-secondary"
-                >
-                  CANCEL
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Floating QR Code Interactive Action Banner */}
+      {detectedQR && qrBannerDismissed !== detectedQR.payload && (
+        <div className="camera-qr-banner">
+          <div className="camera-qr-banner-header">
+            <div className="camera-qr-banner-tag">
+              <QrCode size={13} className="camera-qr-icon-pulse" />
+              <span>QR Code Detected</span>
+            </div>
+            <button
+              type="button"
+              className="camera-qr-dismiss"
+              onClick={() => setQrBannerDismissed(detectedQR.payload)}
+              title="Dismiss QR Notification"
+              aria-label="Dismiss QR Notification"
+            >
+              <X size={12} />
+            </button>
+          </div>
+          <div className="camera-qr-banner-payload" title={detectedQR.payload}>
+            {detectedQR.payload}
+          </div>
+          <div className="camera-qr-banner-actions">
+            {detectedQR.is_url && detectedQR.url && (
+              <button
+                type="button"
+                className="camera-qr-btn primary"
+                onClick={handleVisitQR}
+                title="Open link in a new tab"
+              >
+                <ExternalLink size={12} />
+                <span>Visit Link ↗</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="camera-qr-btn secondary"
+              onClick={handleCopyQR}
+              title="Copy to clipboard"
+            >
+              {qrCopied ? <Check size={12} style={{ color: '#4ade80' }} /> : <Copy size={12} />}
+              <span>{qrCopied ? 'Copied' : 'Copy'}</span>
+            </button>
+            <button
+              type="button"
+              className="camera-qr-btn secondary"
+              onClick={handleSaveQR}
+              disabled={qrSaving || qrSaved}
+              title="Save to durable notes"
+            >
+              {qrSaved ? <Check size={12} style={{ color: '#4ade80' }} /> : <FileText size={12} />}
+              <span>{qrSaved ? 'Saved to Notes' : qrSaving ? 'Saving…' : 'Save as Note'}</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {faceTracking && faceReadState === 'error' && (
         <div className="camera-error-message" role="status">Face recognition unavailable</div>
       )}
 
-      {showDetails && <div id="camera-settings" className="camera-settings">
-        <div className="camera-settings-heading">Camera settings</div>
+      {cameraError && <p role="alert" className="camera-error-message">{cameraError}</p>}
+
+      {showCameraControls && <div id="camera-settings" className="camera-settings">
+        <label className="camera-tracking-toggle">
+          <input type="checkbox" checked={autoIdentifyProducts} onChange={event => setAutoIdentifyProducts(event.target.checked)} />
+          <span>Auto-identify products</span>
+        </label>
         {onCameraChange && <label className="camera-device-select">
           <span>Camera source</span>
           <select aria-label="Select camera" value={stream?.getVideoTracks()[0]?.getSettings().deviceId || ''} disabled={switchingCamera || cameras.length === 0} onChange={event => void changeCamera(event.target.value)}>
@@ -883,10 +1255,22 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
           </select>
         </label>}
         {switchingCamera && <p role="status" className="camera-settings-meta">Switching camera…</p>}
-        {cameraError && <p role="alert" className="camera-error-message">{cameraError}</p>}
         <label className="camera-tracking-toggle">
           <input type="checkbox" checked={faceTracking} onChange={event => {setFaceTracking(event.target.checked); localStorage.setItem('oracle_face_reticles', String(event.target.checked));}} />
-          <span>Face detection</span>
+          <span>Person tracking</span>
+        </label>
+
+        <label className="camera-tracking-toggle">
+          <input
+            type="checkbox"
+            checked={qrDetection}
+            onChange={event => {
+              setQrDetection(event.target.checked);
+              localStorage.setItem('oracle_qr_detection', String(event.target.checked));
+              if (!event.target.checked) setDetectedQR(null);
+            }}
+          />
+          <span>QR &amp; Barcode scanning</span>
         </label>
 
         <label className="camera-tracking-toggle">
@@ -896,11 +1280,54 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
             localStorage.setItem('oracle_show_all_objects', String(event.target.checked));
             if (!event.target.checked) setForegroundMode('off');
           }} />
-          <span>Object detection</span>
+          <span>Object tracking</span>
         </label>
 
-        <details className="camera-advanced-settings">
-          <summary>Advanced settings</summary>
+      </div>}
+
+      {/* 7. Footer Action Strip */}
+      {scanGuidance && <p className="camera-settings-meta" role="status">{scanGuidance}</p>}
+      <div className="camera-card-footer">
+        <div className="camera-footer-actions">
+          {!autoIdentifyProducts && <button type="button" className="camera-footer-btn primary" disabled={!canCapture}
+            onClick={() => {
+              setDetailsOpen(true);
+              window.dispatchEvent(new CustomEvent('oracle_camera_command', { detail: 'scan' }));
+            }}>
+            <ScanLine size={13} strokeWidth={1.8} />
+            <span>Scan product</span>
+          </button>}
+          {onSnapshot && (
+            <button
+              type="button"
+              onClick={handleSnap}
+              disabled={!canCapture || snapshotPending}
+              className="camera-footer-btn primary"
+              title="Capture a frame to read text, scan QR, or ask Oracle"
+            >
+              <Camera size={13} strokeWidth={1.8} />
+              <span>{snapshotPending ? 'Capturing...' : 'Capture & ask'}</span>
+            </button>
+          )}
+
+        </div>
+      </div>
+    </motion.div>
+    <ProductIntelligencePanel video={videoRef} stream={stream} autoIdentify={autoIdentifyProducts}
+      sidebarOpen={detailsOpen} onShowDetails={() => setDetailsOpen(true)} onHideDetails={hideDetails}
+      onScanGuidance={setScanGuidance}
+      target={productTarget && { id: productTarget.trackId, box: productTarget.box, label: productTarget.class || productTarget.class_name }}
+      frameWidth={vw} frameHeight={vh} />
+    </div>
+    {identityReview && <section className="camera-watchlist-review" aria-label="Camera identity details">
+      <button type="button" className="person-action-btn" onClick={() => setIdentityReview(null)}>Close details</button>
+      <strong>{identityReview.reason !== null && 'Possible watchlist match · '}{identityReview.face.name}</strong>
+      <span>{cameraProfileRole(identityReview.face)} · {identityReview.face.permission === 'administrator' ? 'Administrator' : 'Standard'}</span>
+      <span>Last seen <time dateTime={new Date(identityReview.seen).toISOString()}>{new Date(identityReview.seen).toLocaleString()}</time></span>
+      {identityReview.reason && <p>{identityReview.reason}</p>}
+    </section>}
+    {advancedSettingsHost && createPortal(<div className="camera-advanced-controls">
+<h3>Live camera controls</h3>
         {lastLatency !== null && <p className="camera-settings-meta">Processing latency: {lastLatency} ms</p>}
       {/* 5. Clean Standardized Secondary Toolbar */}
       <div className="camera-toolbar-row">
@@ -969,7 +1396,7 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
       {foregroundMode !== 'off' && <span role="status" className="camera-focus-reason">{objects.some(o=>o.mask && (foregroundMode==='people'?o.class==='person':o.trackId===selectedTrack))?'Foreground isolated':'Waiting for subject'}</span>}
 
       {/* 6. Expandable Diagnostics (includes Object Recognition) */}
-      {showDetails && (
+      {(
         <motion.div
           className="camera-details-drawer"
           initial={{ opacity: 0, y: -4 }}
@@ -979,6 +1406,18 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
         >
           {primaryFace && (
             <div className="camera-biometric-details">
+              {primaryFace.matched && !primaryFace.held && primaryFace.id && localStorage.getItem(`oracle_watchlist_${primaryFace.id}`) !== null && (
+                <div className="detail-row">
+                  <span>Possible watchlist match</span>
+                  <strong>{primaryFace.name}</strong>
+                </div>
+              )}
+              {primaryFace.public_figure && (
+                <div className="detail-row">
+                  <span>Likely public figure</span>
+                  <a href={primaryFace.public_figure.source} target="_blank" rel="noreferrer">{primaryFace.public_figure.name}</a>
+                </div>
+              )}
               <div className="detail-row">
                 <span>Recognition</span>
                 <strong>{primaryFace.recognition_state.replaceAll('_', ' ').toUpperCase()}</strong>
@@ -987,10 +1426,17 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
                 <span>Similarity</span>
                 <strong>{typeof primaryFace.cosine_score === 'number' ? primaryFace.cosine_score.toFixed(3) : 'N/A'}</strong>
               </div>
-              {primaryFace.relationship && (
+              {primaryFace.matched && primaryFace.relationship && (
                 <div className="detail-row">
-                  <span>Relationship</span>
-                  <strong>{primaryFace.relationship.toUpperCase()}</strong>
+                  <span>Profile role</span>
+                  <strong>{cameraProfileRole(primaryFace)}</strong>
+                </div>
+              )}
+              {primaryFace.matched && primaryFace.permission && (
+                <div className="detail-row">
+                  <span>Profile clearance</span>
+                  <strong>{primaryFace.permission === 'administrator' ? 'Administrator' :
+                    primaryFace.permission === 'disabled' ? 'Disabled' : 'Standard'}</strong>
                 </div>
               )}
               {primaryFace.notes && (
@@ -1004,31 +1450,7 @@ export const SurveillanceViewfinder: React.FC<SurveillanceViewfinderProps> = ({
         </motion.div>
       )}
 
-      {objectDetection && <ObjectRecognitionPanel video={videoRef} stream={stream} paused={isEnrollingFace} showControls={showDetails} />}
-        </details>
-      <button type="button" onClick={startEnrollment} disabled={!canCapture} className="camera-footer-btn">
-        <UserCheck size={16} /><span>Enroll face</span>
-      </button>
-      </div>}
-
-      {/* 7. Footer Action Strip */}
-      <div className="camera-card-footer">
-        <div className="camera-footer-actions">
-          {onSnapshot && (
-            <button
-              type="button"
-              onClick={handleSnap}
-              disabled={!canCapture}
-              className="camera-footer-btn primary"
-              title="Capture the current frame and ask about it"
-            >
-              <Camera size={13} strokeWidth={1.8} />
-              <span>Capture &amp; ask</span>
-            </button>
-          )}
-
-        </div>
-      </div>
-    </motion.div>
+</div>, advancedSettingsHost)}
+    </>
   );
 };

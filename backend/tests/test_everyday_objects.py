@@ -3,6 +3,18 @@ from PIL import Image
 from app.everyday_objects import EverydayObjectDetector,crop_regions,merge_detections
 from app.detector import ObjectDetector
 
+
+def test_prefers_large_model_and_falls_back_to_small(tmp_path):
+    for name in ('yolov8s-worldv2.onnx','clip-text.onnx','clip-tokenizer.json'):
+        (tmp_path/name).touch()
+    small=EverydayObjectDetector(model_dir=tmp_path)
+    assert small.available and small.detector.model_path.name=='yolov8s-worldv2.onnx'
+    (tmp_path/'yolov8l-worldv2.onnx').touch()
+    large=EverydayObjectDetector(model_dir=tmp_path)
+    assert large.available and large.detector.model_path.name=='yolov8l-worldv2.onnx'
+    custom=tmp_path/'custom.onnx';custom.touch()
+    assert EverydayObjectDetector(model_dir=tmp_path,model_path=custom).detector.model_path==custom
+
 def test_crop_regions_bounded():
     for w,h in [(1,1),(640,360),(1920,1080)]:
         regions=crop_regions(w,h,[{'box':[-100,0,200,400]}])

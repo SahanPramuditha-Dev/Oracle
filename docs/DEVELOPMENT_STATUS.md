@@ -1,5 +1,13 @@
 # ORACLE development status
 
+## Current working-tree snapshot · 15 November 2026
+
+See the [development roadmap](ORACLE_ROADMAP.md) for current Atlas, Android Companion, voice, camera and protocol implementation. Its November entries record a successful Central frontend build and focused Companion gateway checks from prior development sessions. A clean paired release and a physical phone session remain open. Use the dated entries below as evidence for their respective runs.
+
+## Google verification preparation — 5 November 2026
+
+Prepared the public homepage/privacy/terms site, bounded Firebase Hosting configuration, scope justifications and demo/submission instructions. Added an in-product Google-data disclosure and optional link to a published privacy policy. The local publication preflight passes all eight checks; desktop/mobile renders were inspected, mobile pages have no horizontal overflow, and the static site has no browser console errors or scripts. Seven focused Google backend tests and the application build pass. Nothing was published or submitted for verification. Firebase CLI reauthentication, owner review of policy/terms, hosting release inspection, public URLs/domain ownership, Google branding/scope declarations and real authorized demo evidence remain open. See [verification preparation and blockers](GOOGLE_VERIFICATION_SUBMISSION.md).
+
 ## Google connection increment — 5 November 2026
 
 Combined flow update: one Google sign-in now requests identity plus Calendar/Tasks consent, verifies account email through Google UserInfo and detects popup completion automatically. All 146 backend tests, three Google browser tests and production build passed. After explicit approval for $0 setup, the ORACLE localhost OAuth client was created and its credentials saved in the ignored backend file; Calendar and Tasks APIs were enabled and visibly verified. Billing and paid quota were not changed. The live connector reports configured true; Google account consent is pending in the open account chooser. No live Calendar events or Tasks were changed.

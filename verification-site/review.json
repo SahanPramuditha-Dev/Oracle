@@ -1,0 +1,29 @@
+{
+  "app_name": "Oracle",
+  "project_id": "oracle-5ac86",
+  "support_email": "sahan.dev.tech@gmail.com",
+  "proposed_homepage": "https://oracle-5ac86.firebaseapp.com/",
+  "proposed_privacy_policy": "https://oracle-5ac86.firebaseapp.com/privacy.html",
+  "proposed_terms": "https://oracle-5ac86.firebaseapp.com/terms.html",
+  "publication_status": "local draft; owner review and Firebase reauthentication required",
+  "scopes": [
+    {"scope": "openid", "purpose": "Identify the Google account connected through the authorization-code flow. The stable subject ID keys the stored account."},
+    {"scope": "https://www.googleapis.com/auth/userinfo.email", "purpose": "Verify and display the connected account email so the user can identify the selected Google account."},
+    {"scope": "https://www.googleapis.com/auth/calendar.events", "purpose": "Display upcoming events and create an event, with a selected notification offset, in the calendar explicitly chosen by the user. The UI supports choosing calendars available to the account; Google enforces the account's calendar access role. No attendees or event-update emails are added."},
+    {"scope": "https://www.googleapis.com/auth/calendar.calendarlist.readonly", "purpose": "List the account's available calendar names, identifiers, access roles and timezones so the user can choose an event destination."},
+    {"scope": "https://www.googleapis.com/auth/tasks", "purpose": "List task lists and tasks, create date-only tasks and change a task between needsAction and completed. The read-only scope cannot support creation or completion updates."}
+  ],
+  "offline_access_purpose": "Maintain the approved Google connection between local application sessions using a backend-encrypted refresh token. There is no scheduled two-way synchronization.",
+  "pending_submission_evidence": [
+    "Owner review of public data-use and terms statements",
+    "Authenticated Firebase hosting access and review of any existing hosting release before publication",
+    "Public homepage, privacy policy and terms URLs verified after publication",
+    "Domain ownership confirmed as required by Google Search Console and OAuth branding review",
+    "Developer contact and declared scopes completed in Google Auth Platform",
+    "Production client/distribution review: current client is a development web client with a loopback HTTP callback",
+    "Google account consent completed by the owner; no warning bypass performed by the agent",
+    "A demo video showing real authorized feature usage with disposable, non-private records",
+    "Owner approval before submitting compliance representations and Google verification request",
+    "Google review and approval"
+  ]
+}

@@ -10,7 +10,7 @@ The older register claimed 195 features but contains 200 actual rows. Counts her
 
 ## Planning status
 
-The original inventory remains intact. The existing Phases 0–7 cover only a small first prototype, not this whole list. The current source audit classifies 14 consolidated entries as implemented software within stated limits, 24 as partial and 95 as not implemented. These are not weighted completion percentages. See [full-scope audit](../FULL_SCOPE_AUDIT.md) for every consolidated ID and the proposed continuation streams. A complete release allocation and schedule remain open; no unimplemented idea is silently removed or considered delivered.
+The original inventory remains intact. The existing Phases 0–7 cover only a small first prototype, not this whole list. The 4 November 2026 source audit classified 14 consolidated entries as implemented software within stated limits, 24 as partial and 95 as not implemented. These are not weighted completion percentages. See [full-scope audit](../FULL_SCOPE_AUDIT.md) for every consolidated ID and the proposed continuation streams. See the [current roadmap](../ORACLE_ROADMAP.md) for subsequent development. A complete release allocation and schedule remain open; no unimplemented idea is silently removed or considered delivered.
 
 ## Consolidated capabilities and individual scenarios
 
@@ -357,6 +357,44 @@ Estimate an arrival range using recorded trips and compare with a simple baselin
 #### L12 Leave time suggestions
 
 Suggest when to depart for an event using available journey information.
+
+#### L13 Smart location search and geocoding
+
+Natural language place discovery and reverse-geocoding (e.g. quiet library near campus).
+
+#### L14 Multi-route comparison
+
+Simultaneously compute primary and alternative routes, comparing distance, duration, and terrain.
+
+#### L15 Voice navigation control
+
+Full voice control for map viewport, route planning, waypoint queries, and spoken navigation cues.
+
+#### L16 Live traffic and delay overlays
+
+Route segment coloration indicating estimated congestion, slowdowns, and road closures.
+
+#### L17 Destination weather overlay
+
+Overlay live weather conditions and precipitation around destinations and en route.
+
+#### L18 Multi-stop route optimization
+
+Optimize the order of multiple errand waypoints for maximum transit efficiency.
+
+#### L19 3D geographic exploration
+
+3D building polygon extrusions, terrain elevation, and animated camera flight paths.
+
+#### L20 Emergency medical navigation
+
+One-touch or voice emergency command locking onto closest medical facilities with contact info and 1-tap route.
+
+#### L21 Journey and commute briefings
+
+Synthesizes calendar departure deadlines, live route estimates, and weather warnings into spoken briefings.
+
+See [Maps and Location Intelligence Specification](../MAPS_AND_LOCATION_INTELLIGENCE.md) for full architectural design and technical stack.
 
 
 ### Proactive assistance
@@ -767,7 +805,7 @@ Original identifiers and descriptions are retained below for traceability. They 
 | UI-13 | Device Status Hub | Indicators for camera, microphone, battery, and connected nodes. |
 | UI-14 | Connection Status Pill | Live WebSocket ping latency and backend connection indicator. |
 | UI-15 | Active Model Badge | Visual badge indicating current reasoning engine (e.g. Gemini 2.0 / Ollama). |
-| UI-16 | Dark Modern Theme | Deep charcoal background (#0B0F17) with cyan/teal (#06B6D4) accents. |
+| UI-16 | Dark Modern Theme | Obsidian Glass architecture with deep space void (#0C0E11 / #06090E), Steel Blue (#9DB4D3), and Electric Cyan (#00F3FF) accents. Documented in [Design System](../DESIGN_SYSTEM.md). |
 | UI-17 | Fluid Responsive Layout | Scalable from standard laptops (1366x768) to 4K displays. |
 | UI-18 | Keyboard Shortcuts System | Space/Alt+V (Talk), Alt+C (Cam), Esc (Cancel), Alt+K (Clear). |
 | UI-19 | Accessibility & Screen Reader | ARIA live regions and keyboard navigation for all controls. |

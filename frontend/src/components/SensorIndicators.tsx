@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Camera, CameraOff, MessageSquare, Sliders } from 'lucide-react';
+import { Mic, MicOff, Camera, CameraOff, MessageSquare } from 'lucide-react';
 import { SensorColor, SensorsTelemetry } from '../hooks/useSensors';
 
 interface SensorIndicatorsProps {
   sensors: SensorsTelemetry;
   isDormant: boolean;
   onOpenChat?: () => void;
-  onOpenSettings?: () => void;
 }
 
-export const SensorIndicators: React.FC<SensorIndicatorsProps> = ({ sensors, isDormant, onOpenChat, onOpenSettings }) => {
+export const SensorIndicators: React.FC<SensorIndicatorsProps> = ({ sensors, isDormant, onOpenChat }) => {
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
   const micOn = sensors.mic.state === 'blue' || sensors.mic.state === 'green';
@@ -53,7 +52,7 @@ export const SensorIndicators: React.FC<SensorIndicatorsProps> = ({ sensors, isD
           onClick={sensors.toggleMic}
           aria-pressed={micOn}
           aria-label={`${sensors.mic.label}: ${sensors.mic.detail}`}
-          title="Toggle microphone (M)"
+          title={sensors.mic.detail}
         >
           <span className="mic-toggle-icon" aria-hidden="true">
             {micOn ? <Mic size={13} strokeWidth={1.75} /> : <MicOff size={13} strokeWidth={1.75} />}
@@ -81,7 +80,7 @@ export const SensorIndicators: React.FC<SensorIndicatorsProps> = ({ sensors, isD
           className={`sensor-btn ${sensors.camera.state === 'gray' ? 'sensor-btn-muted' : ''}`}
           onClick={sensors.toggleCamera}
           aria-label={`${sensors.camera.label}: ${sensors.camera.detail}`}
-          title="Toggle optical vision feed"
+          title={sensors.camera.detail}
         >
           {sensors.camera.state === 'gray' || sensors.camera.state === 'red' ? (
             <CameraOff size={13} strokeWidth={1.75} aria-hidden="true" />
@@ -101,17 +100,14 @@ export const SensorIndicators: React.FC<SensorIndicatorsProps> = ({ sensors, isD
 
       {/* Neural Chat Core Channel */}
       <div
-        className="sensor-item"
+        className="sensor-item header-chat-control"
         onMouseEnter={() => setActiveTooltip('chat')}
         onMouseLeave={() => setActiveTooltip(null)}
       >
         <button
           type="button"
           className="sensor-btn"
-          onClick={() => {
-            sensors.pingChat();
-            onOpenChat?.();
-          }}
+          onClick={onOpenChat}
           aria-label={`${sensors.chat.label}: ${sensors.chat.detail}`}
           title="Neural core conversation (C or /)"
         >
@@ -127,30 +123,6 @@ export const SensorIndicators: React.FC<SensorIndicatorsProps> = ({ sensors, isD
         )}
       </div>
 
-      {/* System Settings & Biometrics Channel */}
-      <div
-        className="sensor-item"
-        onMouseEnter={() => setActiveTooltip('settings')}
-        onMouseLeave={() => setActiveTooltip(null)}
-      >
-        <button
-          type="button"
-          className="sensor-btn"
-          onClick={onOpenSettings}
-          aria-label="Open System Settings & Biometrics"
-          title="All Settings & Biometrics (S)"
-        >
-          <Sliders size={13} strokeWidth={1.75} aria-hidden="true" />
-          <span className="sensor-dot sensor-dot-blue" aria-hidden="true" />
-        </button>
-
-        {activeTooltip === 'settings' && (
-          <div className="sensor-tooltip" role="tooltip">
-            <span className="tooltip-title">SETTINGS</span>
-            <span className="tooltip-desc">Biometrics, Vision & Hardware</span>
-          </div>
-        )}
-      </div>
     </div>
   );
 };

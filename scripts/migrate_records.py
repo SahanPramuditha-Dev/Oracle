@@ -1,5 +1,6 @@
 """Back up SQLite, import transactionally, verify every row, then optionally activate PostgreSQL."""
 import argparse
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 import sqlite3
@@ -8,7 +9,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
-from app.database import notes, tasks
+from app.database import atlas_locations, notes, tasks
 from app.records import Records
 from sqlalchemy import insert, select
 from dotenv import set_key
@@ -23,16 +24,22 @@ def import_sqlite(source: Path, target: Records):
             original.backup(copy)
     with sqlite3.connect(backup) as db:
         db.row_factory = sqlite3.Row
-        data = {table.name: [dict(row) for row in db.execute(f'SELECT * FROM {table.name}')] for table in (tasks, notes)}
+        tables = (tasks, notes)
+        if db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (atlas_locations.name,)).fetchone():
+            tables += (atlas_locations,)
+        data = {table.name: [dict(row) for row in db.execute(f'SELECT * FROM {table.name}')] for table in tables}
+        for row in data.get(atlas_locations.name, []):
+            row['data'] = json.loads(row['data'])
     # Both resources are locked in a stable order, including when the destination already has records.
     with target.connect(write=True, resource='tasks') as connection:
         if target.engine.dialect.name == 'postgresql':
             from app.database import locks
             connection.execute(select(locks.c.name).where(locks.c.name == 'notes').with_for_update()).one()
-        for table in (tasks, notes):
+        for table in tables:
             existing = {row['id']: dict(row) for row in connection.execute(select(table)).mappings()}
-            incoming = data[table.name]
-            if len(set(existing) | {row['id'] for row in incoming}) > (100 if table.name == 'tasks' else 1000):
+            incoming = data.get(table.name, [])
+            limit = {'tasks': 100, 'notes': 1000}.get(table.name)
+            if limit is not None and len(set(existing) | {row['id'] for row in incoming}) > limit:
                 raise RuntimeError('Destination record limit would be exceeded')
             for row in incoming:
                 if row['id'] in existing:
@@ -62,7 +69,7 @@ if __name__ == '__main__':
         records.engine.dispose()
         if args.activate:
             set_key(str(ROOT / 'backend/.env'), 'ORACLE_DATABASE_URL', url)
-        print(f"Verified {counts['notes']} notes and {counts['tasks']} tasks.")
+        print(f"Verified {counts.get('notes', 0)} notes, {counts.get('tasks', 0)} tasks, and {counts.get('atlas_locations', 0)} Atlas locations.")
         print('SQLite backup retained in data/backups.' if backup else 'Fresh PostgreSQL store; no SQLite source existed.')
         print('PostgreSQL activated; restart the gateway.' if args.activate else 'Import verified; current gateway configuration unchanged.')
     except Exception as error:

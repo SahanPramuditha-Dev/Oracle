@@ -1,5 +1,7 @@
 # Frontend/backend integration — 5 November 2026
 
+This document records the original planning or integration baseline. See the [current roadmap](ORACLE_ROADMAP.md) for current development information.
+
 The replacement Presence frontend now calls the existing FastAPI backend. Saved records live in PostgreSQL; the current conversation and unsaved drafts remain page-local.
 
 | Area | Connected behavior |

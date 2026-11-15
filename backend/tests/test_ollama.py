@@ -67,3 +67,83 @@ def test_ollama_precedence_or_toggle(monkeypatch):
     with TestClient(create_app(token='test-credential', gemini=fake_gemini, ollama=fake_ollama)) as client:
         data = client.get('/api/v1/capabilities', headers=AUTH).json()
         assert data['model']['provider'] == 'Gemini'
+
+class StreamingOllama(FakeOllama):
+    async def answer_stream(self, text, history):
+        yield 'Hello '
+        if self.error:
+            raise self.error
+        yield 'there.'
+
+
+def test_chat_stream_tokens_and_completion():
+    import json
+    with TestClient(create_app(token='test-credential', ollama=StreamingOllama())) as client:
+        response = client.post('/api/v1/chat?stream=true', headers=AUTH, json={'text': 'Hi'})
+        assert response.status_code == 200
+        assert response.headers['content-type'].startswith('application/x-ndjson')
+        events = [json.loads(line) for line in response.text.splitlines()]
+        assert ''.join(event.get('delta', '') for event in events) == 'Hello there.'
+        assert events[-1]['done'] is True
+        assert events[-1]['processing'] == 'local'
+
+
+def test_chat_stream_reports_failure_without_completion():
+    import json
+    provider = StreamingOllama(ProviderError(502, 'provider_connection', 'Connection interrupted'))
+    with TestClient(create_app(token='test-credential', ollama=provider)) as client:
+        response = client.post('/api/v1/chat?stream=true', headers=AUTH, json={'text': 'Hi'})
+        events = [json.loads(line) for line in response.text.splitlines()]
+        assert events[-1] == {'error': 'Connection interrupted'}
+        assert not any(event.get('done') for event in events)
+
+
+def test_capability_reply_does_not_invent_unavailable_tools():
+    with TestClient(create_app(token='test-credential', ollama=FakeOllama())) as client:
+        response = client.post('/api/v1/chat?stream=true', headers=AUTH, json={'text': 'What can you do?'})
+        data = response.json()
+        assert 'image' not in data['suggestions']
+        assert 'sending emails' not in data['message']
+        assert 'research' in data['suggestions']
+
+
+def test_ollama_model_endpoints():
+    class MockOllama(FakeOllama):
+        def update_model(self, model):
+            self.model = model
+
+        async def list_models(self):
+            return [
+                {
+                    'name': 'qwen3:1.7b',
+                    'size': 1359293444,
+                    'details': {'parameter_size': '2.0B', 'quantization_level': 'Q4_K_M'},
+                    'capabilities': ['completion', 'thinking']
+                },
+                {
+                    'name': 'qwen2.5:1.5b',
+                    'size': 986061892,
+                    'details': {'parameter_size': '1.5B', 'quantization_level': 'Q4_K_M'},
+                    'capabilities': ['completion', 'tools']
+                }
+            ]
+
+    provider = MockOllama()
+    with TestClient(create_app(token='test-credential', ollama=provider)) as client:
+        res = client.get('/api/v1/models/ollama', headers=AUTH)
+        assert res.status_code == 200
+        data = res.json()
+        assert data['active'] == 'qwen2.5:1.5b'
+        assert len(data['models']) == 2
+        assert data['models'][0]['value'] == 'qwen3:1.7b'
+        assert data['models'][0]['badge'] == 'THINKING'
+
+        # Switch model
+        post_res = client.post('/api/v1/models/ollama', headers=AUTH, json={'model': 'qwen3:1.7b'})
+        assert post_res.status_code == 200
+        assert post_res.json()['active'] == 'qwen3:1.7b'
+        assert provider.model == 'qwen3:1.7b'
+
+        # Capabilities now reflects updated model
+        cap_res = client.get('/api/v1/capabilities', headers=AUTH)
+        assert cap_res.json()['model']['name'] == 'qwen3:1.7b'

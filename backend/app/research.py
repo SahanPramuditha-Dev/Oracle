@@ -2,7 +2,6 @@
 from datetime import datetime, timezone
 from html import unescape
 import re
-import ssl
 import json
 import subprocess
 import sys
@@ -15,6 +14,8 @@ from fastapi import APIRouter, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from dotenv import dotenv_values
+
+from .tls import verified_tls
 
 
 class SearchInput(BaseModel):
@@ -54,7 +55,8 @@ async def search_searxng(query):
     if target.scheme != 'http' or target.hostname not in {'127.0.0.1', 'localhost', '::1'} or target.username or target.password or target.query or target.fragment:
         raise HTTPException(503, 'Local SearXNG is not configured. No request was sent.')
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False, trust_env=False,
+                                     verify=verified_tls(trust_env=False)) as client:
             response = await client.get(base + '/search', params={'q': query.strip(), 'format': 'json'})
         response.raise_for_status()
         results = []
@@ -78,7 +80,7 @@ async def search_wikipedia(query):
     if not query.strip():
         raise HTTPException(422, 'Enter a search query')
     try:
-        async with httpx.AsyncClient(timeout=12, follow_redirects=False, verify=ssl.create_default_context(),
+        async with httpx.AsyncClient(timeout=12, follow_redirects=False, verify=verified_tls(system_trust=True),
                                      headers={'User-Agent': 'ORACLE/0.1 (local personal research client)'}) as client:
             response = await client.get('https://en.wikipedia.org/w/api.php', params={
                 'action': 'query', 'list': 'search', 'srsearch': query.strip(),

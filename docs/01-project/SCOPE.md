@@ -1,5 +1,7 @@
 # ORACLE planning questions and scope decisions
 
+This document records the original planning or integration baseline. See the [current roadmap](../ORACLE_ROADMAP.md) for current development information.
+
 ## Status
 
 Scope is not finalized. Earlier delivery bands, release labels and schedules were suggestions and are not commitments. The user has requested a zero-cost first version and documentation needed to begin development. The new start pack proposes a small first version without committing the full feature inventory.

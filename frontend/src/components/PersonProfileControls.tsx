@@ -1,6 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { OracleSelect } from './OracleSelect';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { fetchWithAuth } from '../utils/api';
-import { Sliders, ChevronDown, ShieldCheck, Trash2, Check, AlertCircle } from 'lucide-react';
+import { Sliders, ChevronDown, ShieldCheck, Trash2, Check, AlertCircle, Mic, Square, Volume2 } from 'lucide-react';
+import { sfx } from '../utils/sfx';
+
+export interface VoiceSampleItem {
+  id: string;
+  passphrase: string;
+  duration_ms: number;
+  created: number;
+  quality?: any;
+}
 
 export interface PersonProfile {
   id: string;
@@ -12,6 +22,9 @@ export interface PersonProfile {
   enrollment_state: string;
   sample_count: number;
   sample_ids: string[];
+  voice_sample_count?: number;
+  voice_sample_ids?: string[];
+  voice_samples?: VoiceSampleItem[];
 }
 
 interface Verification {
@@ -42,11 +55,24 @@ export function PersonProfileControls({
   const [verification, setVerification] = useState<Verification | null>(null);
   const request = useRef<AbortController | null>(null);
 
+  // Voice recording state
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordedVoiceBlob, setRecordedVoiceBlob] = useState<Blob | null>(null);
+  const [voiceRecordStatus, setVoiceRecordStatus] = useState<string>('');
+  const voiceMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const challengePhrase = 'Authorize Oracle System';
+
   useEffect(() => {
     setVerification(null);
     request.current?.abort();
     setBusy(false);
     setStatus('');
+    setRecordedVoiceBlob(null);
+    setIsRecordingVoice(false);
+    setVoiceRecordStatus('');
   }, [photo, person.id]);
 
   useEffect(() => {
@@ -59,6 +85,16 @@ export function PersonProfileControls({
   }, [person.name, person.notes, person.relationship, person.permission, person.enrollment_state]);
 
   useEffect(() => () => request.current?.abort(), []);
+
+  // Clean up any ongoing audio recording when component unmounts
+  useEffect(() => {
+    return () => {
+      if (voiceTimeoutRef.current) clearTimeout(voiceTimeoutRef.current);
+      if (voiceStreamRef.current) {
+        voiceStreamRef.current.getTracks().forEach((t) => t.stop());
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!verification?.expires_at) return;
@@ -123,6 +159,121 @@ export function PersonProfileControls({
     }
   }
 
+  // Voice recording & enrollment handlers
+  const handleStartVoiceRecording = useCallback(async () => {
+    try {
+      setVoiceRecordStatus('Accessing microphone...');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+
+      const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4']
+        .find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          voiceChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        setIsRecordingVoice(false);
+        const blob = new Blob(voiceChunksRef.current, { type: mime || 'audio/webm' });
+        if (blob.size >= 800) {
+          setRecordedVoiceBlob(blob);
+          setVoiceRecordStatus('Sample ready for enrollment');
+          sfx.playDiagnosticBlip(2);
+        } else {
+          setVoiceRecordStatus('Recording too short; hold and speak phrase');
+        }
+        if (voiceStreamRef.current) {
+          voiceStreamRef.current.getTracks().forEach((t) => t.stop());
+          voiceStreamRef.current = null;
+        }
+      };
+
+      recorder.start(100);
+      voiceMediaRecorderRef.current = recorder;
+      setIsRecordingVoice(true);
+      setVoiceRecordStatus('Listening... say "Authorize Oracle System"');
+      sfx.playDiagnosticBlip(1);
+
+      // Auto-stop after 3.8 seconds
+      voiceTimeoutRef.current = setTimeout(() => {
+        if (recorder.state === 'recording') {
+          recorder.stop();
+        }
+      }, 3800);
+    } catch (err) {
+      console.error('Failed to start voice recording:', err);
+      setVoiceRecordStatus('Microphone permission denied');
+    }
+  }, []);
+
+  const handleStopVoiceRecording = useCallback(() => {
+    if (voiceTimeoutRef.current) {
+      clearTimeout(voiceTimeoutRef.current);
+      voiceTimeoutRef.current = null;
+    }
+    if (voiceMediaRecorderRef.current && voiceMediaRecorderRef.current.state === 'recording') {
+      voiceMediaRecorderRef.current.stop();
+    }
+  }, []);
+
+  const handleUploadVoiceSample = useCallback(async () => {
+    if (!recordedVoiceBlob) return;
+    setBusy(true);
+    setVoiceRecordStatus('Extracting acoustic voiceprint...');
+    try {
+      const res = await fetchWithAuth(
+        `/api/v1/people/${encodeURIComponent(person.id)}/voice/enroll?passphrase=${encodeURIComponent(challengePhrase)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': recordedVoiceBlob.type || 'audio/webm' },
+          body: recordedVoiceBlob
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || 'Voice enrollment failed');
+      }
+      setRecordedVoiceBlob(null);
+      setVoiceRecordStatus('Voiceprint enrolled successfully');
+      sfx.playDiagnosticBlip(3);
+      onUpdated();
+      setTimeout(() => setVoiceRecordStatus(''), 3500);
+    } catch (err: any) {
+      setVoiceRecordStatus(err.message || 'Enrollment failed');
+    } finally {
+      setBusy(false);
+    }
+  }, [recordedVoiceBlob, person.id, challengePhrase, onUpdated]);
+
+  const handleDeleteVoiceSample = useCallback(async (sampleId: string) => {
+    if (!window.confirm('Delete this acoustic voice sample?')) return;
+    setBusy(true);
+    try {
+      const res = await fetchWithAuth(
+        `/api/v1/people/${encodeURIComponent(person.id)}/voice/samples/${encodeURIComponent(sampleId)}`,
+        { method: 'DELETE' }
+      );
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Failed to delete sample');
+      }
+      sfx.playDiagnosticBlip(1);
+      onUpdated();
+    } catch (err: any) {
+      setStatus(err.message || 'Failed to delete sample');
+    } finally {
+      setBusy(false);
+    }
+  }, [person.id, onUpdated]);
+
+  const voiceSampleList = person.voice_samples || [];
+  const voiceCount = person.voice_sample_count ?? voiceSampleList.length;
+
   return (
     <div className="profile-controls-wrap">
       <button
@@ -133,7 +284,10 @@ export function PersonProfileControls({
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <Sliders size={11} />
-          <span>Edit Profile & Verify Biometrics</span>
+          <span>Edit profile / verify face & voice</span>
+          <span style={{ fontSize: "9.5px", opacity: 0.65, fontFamily: "'JetBrains Mono', monospace" }}>
+            ({person.relationship} · {person.permission} · {voiceCount} voice · {person.sample_count} face)
+          </span>
         </div>
         <ChevronDown
           size={12}
@@ -177,50 +331,41 @@ export function PersonProfileControls({
 
             <label className="profile-field">
               <span>Relationship</span>
-              <select
+              <OracleSelect
                 aria-label={`Relationship for ${person.id}`}
                 value={relationship}
-                onChange={(e) => setRelationship(e.target.value)}
-                className="settings-select"
-              >
-                {['owner', 'family', 'friend', 'colleague', 'guest'].map((v) => (
-                  <option key={v} value={v}>
-                    {v.toUpperCase()}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setRelationship(val)}
+                options={['owner', 'family', 'friend', 'colleague', 'guest'].map((v) => ({
+                  value: v,
+                  label: v.toUpperCase()
+                }))}
+              />
             </label>
 
             <label className="profile-field">
               <span>Permission Tier</span>
-              <select
+              <OracleSelect
                 aria-label={`Permission for ${person.id}`}
                 value={permission}
-                onChange={(e) => setPermission(e.target.value)}
-                className="settings-select"
-              >
-                {['standard', 'administrator', 'disabled'].map((v) => (
-                  <option key={v} value={v}>
-                    {v.toUpperCase()}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setPermission(val)}
+                options={['standard', 'administrator', 'disabled'].map((v) => ({
+                  value: v,
+                  label: v.toUpperCase()
+                }))}
+              />
             </label>
 
             <label className="profile-field" style={{ gridColumn: 'span 2' }}>
               <span>Enrollment Lifecycle</span>
-              <select
+              <OracleSelect
                 aria-label={`Enrollment for ${person.id}`}
                 value={enrollment}
-                onChange={(e) => setEnrollment(e.target.value)}
-                className="settings-select"
-              >
-                {['incomplete', 'active', 'needs_new_samples', 'revoked'].map((v) => (
-                  <option key={v} value={v}>
-                    {v.replaceAll('_', ' ').toUpperCase()}
-                  </option>
-                ))}
-              </select>
+                onChange={(val) => setEnrollment(val)}
+                options={['incomplete', 'active', 'needs_new_samples', 'revoked'].map((v) => ({
+                  value: v,
+                  label: v.replaceAll('_', ' ').toUpperCase()
+                }))}
+              />
             </label>
           </div>
 
@@ -240,7 +385,7 @@ export function PersonProfileControls({
               className="person-action-btn primary"
             >
               <Check size={11} />
-              <span>Save Changes</span>
+              <span>Save profile</span>
             </button>
 
             <button
@@ -250,7 +395,7 @@ export function PersonProfileControls({
               className="person-action-btn"
             >
               <ShieldCheck size={11} />
-              <span>Verify Selected Photo</span>
+              <span>Verify selected photo</span>
             </button>
           </div>
 
@@ -269,23 +414,142 @@ export function PersonProfileControls({
                 {verification.verification_state === 'expired'
                   ? 'Verification token expired.'
                   : verification.verified
-                  ? `Face match verified (30s window). ${
+                  ? `Face match verified for 30 seconds. ${
                       typeof verification.cosine_score === 'number'
                         ? `Cosine similarity: ${(verification.cosine_score * 100).toFixed(1)}%`
                         : ''
                     }`
                   : `${verification.reason || verification.verification_state}.`}
               </span>
+              <div style={{ marginTop: 4, fontSize: "9.5px", color: "var(--muted)" }}>
+                A face match does not approve access. Liveness and voice factor verification are required for administration.
+              </div>
             </div>
           )}
 
           {status && <div className="profile-status-message">{status}</div>}
 
-          {/* Sample Management Sub-rack */}
+          {/* ==================== VOICEPRINT BIOMETRICS STUDIO ==================== */}
+          <div className="profile-samples-rack" style={{ marginTop: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span className="profile-samples-head" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Mic size={11} style={{ color: 'var(--accent)' }} />
+                <span>Acoustic Voiceprint Samples ({voiceCount}/3 enrolled)</span>
+              </span>
+              <span style={{ fontSize: '9px', color: voiceCount >= 1 ? '#4ade80' : 'var(--muted)', fontFamily: "'JetBrains Mono', monospace" }}>
+                {voiceCount >= 3 ? '✓ Complete' : voiceCount >= 1 ? 'Active (Add more for accuracy)' : 'None enrolled'}
+              </span>
+            </div>
+
+            {/* Guided Voice Recording Control */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                padding: '10px 12px',
+                background: 'rgba(157, 180, 211, 0.04)',
+                border: '1px solid rgba(157, 180, 211, 0.15)',
+                borderRadius: '8px',
+                marginBottom: '8px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: '10.5px', color: 'var(--foreground)', fontWeight: 500 }}>
+                    Enroll Voice Password
+                  </span>
+                  <span style={{ fontSize: '9px', color: 'var(--muted)' }}>
+                    Challenge phrase: <strong style={{ color: 'var(--accent)' }}>"{challengePhrase}"</strong>
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  {isRecordingVoice ? (
+                    <button
+                      type="button"
+                      onClick={handleStopVoiceRecording}
+                      className="person-action-btn primary"
+                      style={{ background: '#ef4444', borderColor: '#ef4444' }}
+                    >
+                      <Square size={10} />
+                      <span>Stop</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={handleStartVoiceRecording}
+                      className="person-action-btn"
+                    >
+                      <Mic size={10} />
+                      <span>{recordedVoiceBlob ? 'Re-Record' : 'Record Phrase'}</span>
+                    </button>
+                  )}
+
+                  {recordedVoiceBlob && !isRecordingVoice && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={handleUploadVoiceSample}
+                      className="person-action-btn primary"
+                    >
+                      <Check size={10} />
+                      <span>Commit Sample</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {voiceRecordStatus && (
+                <div
+                  style={{
+                    fontSize: '9.5px',
+                    fontFamily: "'JetBrains Mono', monospace",
+                    color: voiceRecordStatus.includes('failed') || voiceRecordStatus.includes('denied') || voiceRecordStatus.includes('short')
+                      ? '#f87171'
+                      : voiceRecordStatus.includes('Listening')
+                      ? '#38bdf8'
+                      : '#4ade80',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}
+                >
+                  <Volume2 size={10} />
+                  <span>{voiceRecordStatus}</span>
+                </div>
+              )}
+            </div>
+
+            {/* List of enrolled voiceprints */}
+            {voiceSampleList.length > 0 && (
+              <div className="profile-samples-list">
+                {voiceSampleList.map((sample, i) => (
+                  <div key={sample.id} className="profile-sample-item">
+                    <span>
+                      Voiceprint #{i + 1} ({sample.duration_ms ? `${(sample.duration_ms / 1000).toFixed(1)}s` : 'Enrolled'})
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => handleDeleteVoiceSample(sample.id)}
+                      className="profile-sample-delete"
+                      title="Delete voice sample"
+                    >
+                      <Trash2 size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ==================== FACE SAMPLE RACK ==================== */}
           {person.sample_ids.length > 0 && (
-            <div className="profile-samples-rack">
+            <div className="profile-samples-rack" style={{ marginTop: '10px' }}>
               <span className="profile-samples-head">
-                Enrolled Angle Samples ({person.sample_count})
+                Enrolled Optical Face Samples ({person.sample_count})
               </span>
               <div className="profile-samples-list">
                 {person.sample_ids.map((id, i) => (

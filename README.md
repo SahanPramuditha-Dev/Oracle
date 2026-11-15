@@ -1,12 +1,12 @@
 # ORACLE
 
-## Active increment — Presence UI and Google Workspace, 5 November 2026
+Oracle Central is a local-first Windows assistant with a React Presence interface and a FastAPI gateway. Start with the [documentation index](docs/README.md) for setup, feature guides and the current development status.
 
-The previous UI was archived at the user's request. The replacement Presence frontend connects chat, voice, camera, notes, reminders, memories and the bounded Google Workspace connector to the existing backend. See [frontend/backend integration](docs/FRONTEND_BACKEND_INTEGRATION.md) and [Google Workspace connection](docs/GOOGLE_WORKSPACE_CONNECTION.md) for supported behavior, verification and remaining boundaries.
+## Development snapshot
 
-The backend and stored records are retained. This reconnection does not complete the broader feature inventory or change outstanding physical-device acceptance.
+The November working tree includes Atlas maps and routing, an integrated Android Companion gateway, camera and product recognition, local voice, direct answers, records, identity and protocols, and optional Google Calendar and Tasks integration. Some of these changes are still local. Use the commit history of your checkout to determine which implementation is available.
 
-A zero-paid-service personal assistant in early development. The planned version combines local conversation, approved desktop actions, camera reading and explicitly saved memories.
+See the [development roadmap](docs/ORACLE_ROADMAP.md) for working-tree capabilities, matched Companion build instructions and remaining device tests. The [development status](docs/DEVELOPMENT_STATUS.md) records dated verification. The [requirements register](docs/02-requirements/COMPLETE_FEATURE_LIST.md) describes the full product scope.
 
 ## License and third-party notices
 
@@ -15,24 +15,11 @@ provider APIs and downloaded assets have separate terms; see
 [third-party notices](THIRD_PARTY_NOTICES.md) before redistribution or
 commercial deployment. The notice also covers browser APIs, Google Fonts,
 Ollama, PostgreSQL, model providers and the pinned vision assets.
-The archived [dormant visual page](dormant.html) and its legacy CDN dependency
-are also recorded there.
+The notices also record the legacy dormant-page CDN dependency.
 
 ## Homepage preview
 
 ![ORACLE Presence homepage](Screenshots/Img%201%20Homepage.png)
-
-## Full product versus initial prototype
-
-The full-scope audit lists 14 implemented software entries, 24 partial and 95 not implemented out of 133 consolidated features; none of the 24 broad integrated journeys has full acceptance as originally written. Maps, calendar/workspaces, sourced web/document tools, richer desktop/vision workflows, people memory, proactive assistance and other specialist/platform features remain substantial future work. See [complete feature/scenario status](docs/FULL_SCOPE_AUDIT.md).
-
-## Current stage
-
-**Phases 0–9 are active.** The current application uses a FastAPI backend, PostgreSQL records, and a Presence frontend. Local image reading, approved image memory, local voice software, person/object recognition, research retrieval, and the bounded Google Calendar/Tasks connector are implemented. Ollama remains an optional local provider; Gemini remains an optional cloud provider.
-
-The FastAPI backend handles AI requests, authorization, approved actions, durable notes/timers/reminders, local model inference, research retrieval, Google OAuth, and vision processing. See [phase gates](docs/DEVELOPMENT_PHASES.md) and [development status](docs/DEVELOPMENT_STATUS.md) for acceptance evidence and remaining work.
-
-Validation for this increment: **146 backend tests, 11 browser integration tests, 3 Google browser tests, and the production frontend build passed.** These are bounded software checks; physical camera, microphone and speaker acceptance remains open.
 
 ## Local AI and Vision Configuration
 
@@ -116,6 +103,32 @@ to a cloud speech provider.
 See [people recognition and verification](docs/PEOPLE_RECOGNITION.md) for stable identity/sample storage, explicit categories, matching states and access boundaries. Face matches do not authorize access.
 * **`POST /api/v1/people/enroll?name=...&notes=...`**: Enroll an individual (e.g., "Sahan", "Elon Musk") with a photo. Detects the face via YuNet, computes a 128-d biometric feature vector via SFace, and stores it in PostgreSQL with privacy preservation.
 * **`GET /api/v1/people`**: List all enrolled individuals (without exposing raw biometric vectors).
+
+### Administrator Protocol
+
+Open **Admin Protocol** from Workspace or the status menu, or say or type “Activate Admin Protocol.” The enrolled administrator must match the face scan and then record the exact phrase shown by Oracle. The phrase is issued for one attempt. A failed voice check requires a fresh attempt. Clearance lasts five minutes in the current window. Use **End administrator clearance** in the status menu or say “Lock admin” to revoke it early.
+
+The first administrator can be provisioned locally. Enroll a standard identity with consent, capture three face samples, and add a voice sample in **System Settings**. From the repository root, use the existing local gateway maintenance credential to promote that profile. Replace the profile ID and use your configured local gateway address.
+
+```powershell
+$oracleProfileId = 'person_REPLACE_WITH_ENROLLED_PROFILE_ID'
+$oracleGateway = 'http://127.0.0.1:8000'
+$oracleMaintenanceToken = (Get-Content -Raw -LiteralPath 'data/dev/api-token').Trim()
+Invoke-RestMethod -Method Patch -Uri "$oracleGateway/api/v1/people/$oracleProfileId" `
+  -Headers @{ Authorization = "Bearer $oracleMaintenanceToken" } `
+  -ContentType 'application/json' -Body '{"permission":"administrator"}' | Out-Null
+Remove-Variable oracleMaintenanceToken
+```
+
+### Lockdown Protocol
+
+Select **Protocol LOCKDOWN** in Workspace or say or type “Activate Lockdown.” Oracle revokes active administrator grants, cancels verification attempts and queued desktop actions, and restricts new desktop actions. The status menu reports Oracle's restriction and the Windows lock request separately.
+
+Unlock Windows using its usual sign-in, then verify through **Admin Protocol** to resume desktop actions and gateway chat. The restriction lives in the running gateway process. Restarting that process resets the restriction and discards any remaining grants and queued actions.
+
+### Ghost Protocol
+
+Select **Protocol GHOST** in Workspace or say or type “Enable Ghost mode.” Oracle hides its private panels, captions, and reminder previews, closes camera and biometric capture, and pauses voice input in the current window. Select **Exit Ghost mode** to restore the interface and your configured voice mode. Reopen the camera manually when needed.
 * **`POST /api/v1/people/identify?threshold=0.40`**: Detects all faces in an incoming image and compares their embeddings against the enrolled gallery in ~50ms using cosine similarity. Returns matched names, bounding boxes, and confidence levels.
 * **`POST /api/v1/people/verify?person_id=...`**: Compare one face against the selected identity’s enrolled samples; results expire after 30 seconds and do not grant access.
 * **`DELETE /api/v1/people/{person_id}`**: Remove an enrolled individual from local storage.
@@ -123,7 +136,7 @@ See [people recognition and verification](docs/PEOPLE_RECOGNITION.md) for stable
 * **`POST /api/v1/vision/ask?prompt=...`**: Conversational visual question answering powered by local `moondream` in Ollama. Runs 100% locally on your GPU with `cloud_requests: False`.
 * **`POST /api/v1/images/read`**: Local OCR & QR decoding using RapidOCR and OpenCV.
 
-When Ollama is selected, all chat inference executes on your local GPU with `cloud_requests: False`. No prompts or tokens are sent to external services. Switch `AI_PROVIDER=gemini` and set `GEMINI_ENABLED=true` to route to Google Gemini instead.
+A request served by the local Ollama instance runs on this machine. CPU and GPU usage depend on the hardware and Ollama configuration. Gemini, Google Workspace and network-backed research or maps use external services when configured or requested.
 
 For conversational answers the app sends the current text plus up to ten recent user and assistant messages, each context item trimmed to 1200 characters. Exact supported app-open commands are handled locally.
 
@@ -131,7 +144,7 @@ Requests use a 512-token output cap, one active generation and a 50-attempt limi
 
 ## Start the workspace
 
-From this project folder in PowerShell:
+Run `run-system.bat` from a checkout containing the Windows launcher. For separate backend and frontend terminals, run the following from the project folder in PowerShell:
 
 ```powershell
 .\scripts\start-dev.ps1
@@ -147,7 +160,8 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173. For separate backend terminals, run preparation once, then:
+Open http://127.0.0.1:5173. If that port is unavailable on Windows, `run-system.bat`
+automatically uses http://127.0.0.1:3000 instead. For separate backend terminals, run preparation once, then:
 
 ```powershell
 .\backend\.venv\Scripts\python.exe scripts\prepare_dev.py

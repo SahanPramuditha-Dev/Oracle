@@ -17,6 +17,7 @@ test('foreground selection follows stable IDs and clears on subject loss', async
   await page.goto('/', {waitUntil:'domcontentloaded'});
   await page.waitForFunction(() => Boolean(window.ORACLE)); await page.keyboard.press('Escape');
   await page.getByTitle('Toggle optical vision feed',{exact:true}).click();
+  await page.evaluate(()=>window.dispatchEvent(new CustomEvent('oracle_open_settings',{detail:'camera'})));
   await page.getByRole('combobox',{name:'Foreground',exact:true}).selectOption('selected');
   await expect(page.getByRole('combobox',{name:'Subject',exact:true}).locator('option')).toHaveCount(2,{timeout:10000});
   await page.getByRole('combobox',{name:'Subject',exact:true}).selectOption('1');

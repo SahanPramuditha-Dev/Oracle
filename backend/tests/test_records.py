@@ -34,9 +34,12 @@ def test_overdue_reconciles_after_restart_and_snooze_and_cancel_persist(tmp_path
     clock[0] += 2000
     with client(path) as second:
         assert second.get('/api/v1/tasks', headers=AUTH).json()['tasks'][0]['state'] == 'alert'
+        alerts = second.get('/api/v1/tasks?due_only=true', headers=AUTH).json()['tasks']
+        assert [alert['id'] for alert in alerts] == [task['id']]
         assert second.post(f"/api/v1/tasks/{task['id']}/snooze", headers=AUTH, json={'minutes': 5}).status_code == 200
     with client(path) as third:
         assert third.get('/api/v1/tasks', headers=AUTH).json()['tasks'][0]['state'] == 'pending'
+        assert third.get('/api/v1/tasks?due_only=true', headers=AUTH).json()['tasks'] == []
         third.delete('/api/v1/tasks/' + task['id'], headers=AUTH)
         assert third.get('/api/v1/tasks', headers=AUTH).json()['tasks'] == []
 

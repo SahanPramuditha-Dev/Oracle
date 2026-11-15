@@ -1,3 +1,5 @@
+import { briefingFocus } from '../utils/briefing';
+import { parseAtlasSpatialCommand } from '../utils/atlasSpatialCommands';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -16,17 +18,24 @@ import {
   Trash2
 } from 'lucide-react';
 import { OracleMode } from '../types';
-import { fetchWithAuth, readJson, localApi } from '../utils/api';
+import { fetchWithAuth, hasAdminGrant, readJson, localApi } from '../utils/api';
+import { getStoredProtocols, executeProtocol } from '../utils/protocols';
 import { CaptureReader } from './CaptureReader';
 import { ResearchTools } from './ResearchTools';
 import { soundEffects } from '../utils/audioEffects';
 import {
   speakWithKokoro,
   stopSpeaking,
+  isSpeakingActive,
   LocalSpeechRecorder,
   SileroVoiceDetector,
   transcribeAudioBlob
 } from '../utils/voice';
+import { commandEvents, interpretVoiceIntent, normalizeVoiceCommand } from '../utils/voiceIntent';
+import { changeTaughtCommand, findTaughtCommand, isPetLaunchCommand, parseTeachingRequest, taughtActionLabels, type TaughtCommand } from '../utils/taughtCommands';
+import { recordCommandAttempt, updateCommandOutcome } from '../utils/commandHistory';
+import { readReplyPreferences } from '../utils/replyPreferences';
+import { readChatStream, recordResponseTime } from '../utils/chatStream';
 
 interface Message {
   id: string;
@@ -57,12 +66,22 @@ interface ConversationHUDProps {
   onClearInitialImage?: () => void;
   onOpenRecords?: () => void;
   voiceRequest?: number;
+  privacyActive?: boolean;
   onWake?: () => void;
+  onInputLevel?: (level: number) => void;
+  onVoiceError?: (message: string) => void;
+  setUserCaption: React.Dispatch<React.SetStateAction<UserVoiceCaption | null>>;
+  setOracleCaption: React.Dispatch<React.SetStateAction<string | null>>;
   onVoiceStatus?: (status: VoiceEngineStatus) => void;
 }
 
+export interface UserVoiceCaption {
+  text: string;
+  state: 'listening' | 'transcribing' | 'complete' | 'error';
+}
+
 export function extractWakePrompt(text: string): { matched: boolean; cleanPrompt: string } {
-  const match = /\b(?:(?:hey|hi|ok|okay)[\s,]+)?oracle\b[\s,.!?:-]*/i.exec(text);
+  const match = /^\s*hey[\s,]+oracle\b[\s,.!?:-]*/i.exec(text);
   if (!match) return {matched: false, cleanPrompt: text};
   return {matched: true, cleanPrompt: text.slice(match.index + match[0].length).trim()};
 }
@@ -76,22 +95,45 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
   onClearInitialImage,
   onOpenRecords,
   voiceRequest = 0,
+  privacyActive = false,
   onWake,
-  onVoiceStatus
+  onVoiceStatus,
+  onInputLevel,
+  setUserCaption,
+  setOracleCaption,
+  onVoiceError
 }) => {
   const [messages, setMessages] = useState<Message[]>([]);
+  const captionTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(captionTimer.current), []);
   const [input, setInput] = useState('');
   const [researchOpen,setResearchOpen]=useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [vadReady, setVadReady] = useState(false);
+  const [isVadActive, setIsVadActive] = useState(false);
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
+  const speechQueueVersion = useRef(0);
   const [speechMode, setSpeechMode] = useState<SpeechMode>(() => {
     const saved = localStorage.getItem('oracle_speech_mode');
-    return (saved === 'vad' || saved === 'wake' || saved === 'silero')
-      ? (saved === 'silero' ? 'vad' : (saved as SpeechMode))
-      : 'ptt';
+    if (saved === 'ptt') return 'ptt';
+    if (saved === 'wake') return 'wake';
+    return 'vad';
   });
+
+  const wakeFollowupUntil = useRef(0);
+  const voiceGeneration = useRef(0);
+  const automaticTranscription = useRef<AbortController | null>(null);
+  const partialTranscription = useRef<AbortController | null>(null);
+  const cancelAutomaticSpeech = useCallback(() => {
+    voiceGeneration.current++;
+    wakeFollowupUntil.current = 0;
+    automaticTranscription.current?.abort();
+    automaticTranscription.current = null;
+    partialTranscription.current?.abort();
+    partialTranscription.current = null;
+    setUserCaption(null);
+  }, []);
 
   // Dynamically sync speechMode when changed in Settings or via ambient pill
   useEffect(() => {
@@ -99,6 +141,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
       const custom = e as CustomEvent<SpeechMode>;
       if (custom.detail && (custom.detail === 'ptt' || custom.detail === 'vad' || custom.detail === 'wake')) {
         pttVersion.current++;
+        cancelAutomaticSpeech();
         pttRecorderRef.current?.cancel();
         setIsListening(false);
         setMode('ready');
@@ -110,24 +153,48 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
     };
     window.addEventListener('oracle_speech_mode_changed', handleModeChange);
     return () => window.removeEventListener('oracle_speech_mode_changed', handleModeChange);
-  }, [setMode]);
+  }, [cancelAutomaticSpeech, setMode]);
   const [speechProb, setSpeechProb] = useState(0);
   const [vadStatus, setVadStatus] = useState<string>('Standby');
   const [attachedImage, setAttachedImage] = useState<{ blob: Blob; url: string; source:'camera'|'file' } | null>(null);
+  const attachments = useRef(new Set<string>());
+  const draftImageUrl = useRef<string | null>(null);
+  const discardDraftImage = useCallback(() => {
+    const url = draftImageUrl.current;
+    if (url) {
+      URL.revokeObjectURL(url);
+      attachments.current.delete(url);
+    }
+    draftImageUrl.current = null;
+    setAttachedImage(null);
+  }, []);
 
-    const [activeTimer, setActiveTimer] = useState<{ remaining: number; total: number; label: string } | null>(null);
+    const [activeTimer, setActiveTimer] = useState<{ expiresAt: number; label: string } | null>(null);
+
+  const [timerRemaining, setTimerRemaining] = useState(0);
 
   const [connection, setConnection] = useState('Checking gateway');
-  const [action, setAction] = useState<{id:string;name:string;expires:number}|null>(null);
+  const [action, setAction] = useState<{id:string;name:string;expires:number;historyId?:string}|null>(null);
+  const draftTranscript = useRef<string | undefined>(undefined);
+  const [teachingPhrase, setTeachingPhrase] = useState<TaughtCommand | null>(null);
+  const [teachingStatus, setTeachingStatus] = useState('');
   const [deciding, setDeciding] = useState(false);
   const actionRef = useRef<typeof action>(null);
   const decision = useRef(false);
   const pending = useRef<AbortController|null>(null);
   const generation = useRef(0);
   const pttVersion = useRef(0);
-  const attachments = useRef(new Set<string>());
   const [clock, setClock] = useState(Date.now());
-  useEffect(() => { const tick = setInterval(()=>setClock(Date.now()),1000); return ()=>clearInterval(tick); }, []);
+  useEffect(() => {
+    if (!isOpen || !action) return;
+    const update = () => setClock(Date.now());
+    update();
+    const tick = setInterval(update, 1000);
+    return () => clearInterval(tick);
+  }, [isOpen, action]);
+  useEffect(() => {
+    if (action && clock >= action.expires) updateCommandOutcome(action.historyId, 'Launch confirmation expired');
+  }, [action, clock]);
   useEffect(() => {
     if (!isOpen) return;
     const controller = new AbortController();
@@ -139,14 +206,32 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
   const stop = useCallback((resetMode=true) => {
     generation.current++; pttVersion.current++; pending.current?.abort(); pending.current=null;
     isGeneratingRef.current=false; setIsGenerating(false); setIsListening(false);
+    cancelAutomaticSpeech();
+    setTeachingPhrase(null);
+    setTeachingStatus('');
     pttRecorderRef.current?.cancel();
     if (speechModeRef.current === 'ptt') {
       void vadDetectorRef.current?.destroy();
     }
+    speechQueueVersion.current++;
     stopSpeaking();
+    window.clearTimeout(captionTimer.current);
+    setOracleCaption(null);
     if(resetMode)setMode('ready');
-    if(actionRef.current && !decision.current){const target=actionRef.current;actionRef.current=null;setAction(null);void localApi(`actions/${target.id}`,'DELETE').catch(error=>setVadStatus(String(error)));}
-  },[setMode]);
+    draftTranscript.current = undefined;
+    if(actionRef.current && !decision.current){const target=actionRef.current;actionRef.current=null;setAction(null);updateCommandOutcome(target.historyId, 'Confirmation dismissed');void localApi(`actions/${target.id}`,'DELETE').catch(error=>setVadStatus(String(error)));}
+  },[cancelAutomaticSpeech,setMode]);
+  useEffect(() => {
+    const interrupt = () => stop(false);
+    window.addEventListener('oracle_lockdown_started', interrupt);
+    window.addEventListener('oracle_hibernate_started', interrupt);
+    window.addEventListener('oracle_privacy_started', interrupt);
+    return () => {
+      window.removeEventListener('oracle_lockdown_started', interrupt);
+      window.removeEventListener('oracle_hibernate_started', interrupt);
+      window.removeEventListener('oracle_privacy_started', interrupt);
+    };
+  }, [stop]);
   useEffect(()=>{
     if((currentMode === 'dormant' || currentMode === 'initializing') && speechMode === 'ptt') stop(false);
   },[currentMode,speechMode,stop]);
@@ -159,8 +244,9 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
     decision.current=true;setDeciding(true);
     try {
       const data=await localApi<{message?:string}>(`actions/${target.id}${confirm?'/confirm':''}`,confirm?'POST':'DELETE');
+      updateCommandOutcome(target.historyId, confirm ? 'Launch request accepted by Windows' : 'Launch cancelled');
       setMessages(items=>[...items,{id:crypto.randomUUID(),role:'model',text:data.message||'Launch request cancelled.',timestamp:new Date().toLocaleTimeString(),processing:'local'}]);
-    } catch(error){setMessages(items=>[...items,{id:crypto.randomUUID(),role:'model',text:String(error),error:true,timestamp:new Date().toLocaleTimeString()}]);}
+    } catch(error){updateCommandOutcome(target.historyId, confirm ? 'Launch confirmation failed' : 'Cancellation failed');setMessages(items=>[...items,{id:crypto.randomUUID(),role:'model',text:String(error),error:true,timestamp:new Date().toLocaleTimeString()}]);}
     finally {actionRef.current=null;setAction(null);decision.current=false;setDeciding(false);}
   }
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -168,7 +254,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const pttRecorderRef = useRef<LocalSpeechRecorder | null>(null);
   const vadDetectorRef = useRef<SileroVoiceDetector | null>(null);
-  const speechModeRef = useRef<SpeechMode>('ptt');
+  const speechModeRef = useRef<SpeechMode>('vad');
   speechModeRef.current = speechMode;
 
   const isGeneratingRef = useRef(false);
@@ -185,13 +271,15 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
   // Handle incoming snapshot from camera HUD
   useEffect(() => {
     if (initialImage) {
+      discardDraftImage();
       const url = URL.createObjectURL(initialImage);
+      draftImageUrl.current = url;
       attachments.current.add(url);
       setAttachedImage({ blob: initialImage, url, source:'camera' });
       setInput('Describe what you see in this snapshot.');
       onClearInitialImage?.();
     }
-  }, [initialImage, onClearInitialImage]);
+  }, [discardDraftImage, initialImage, onClearInitialImage]);
 
   // Auto-focus input when drawer opens
   useEffect(() => {
@@ -202,90 +290,302 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
 
   // Auto-scroll to latest message
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: isGenerating ? 'instant' : 'smooth' });
   }, [messages, isGenerating]);
 
   // Voice playback with acoustic feedback prevention
   const speakText = useCallback(
-    (text: string) => {
+    (text: string, onStart?: () => void, onEnd?: () => void) => {
       if (!isVoiceEnabled) return;
 
-      // Pause VAD while speaking to prevent hearing oneself
-      if (vadDetectorRef.current?.isActive()) {
-        vadDetectorRef.current.pause().catch(() => {});
-      }
-
+      let started = false;
       speakWithKokoro(text, {
-        onStart: () => setMode('speaking'),
+        onStart: () => {
+          started = true;
+          window.clearTimeout(captionTimer.current);
+          setUserCaption(null);
+          setOracleCaption(text.replace(/[*#`_~]/g, '').trim().slice(0, 1800));
+          setMode('speaking');
+          onStart?.();
+        },
         onEnd: () => {
-          setMode('ready');
-          // Resume VAD after speech concludes
-          if (speechModeRef.current !== 'ptt' && vadDetectorRef.current) {
-            setTimeout(() => {
-              vadDetectorRef.current?.resume().catch(() => {});
-            }, 300);
+          setMode(isGeneratingRef.current ? 'thinking' : 'ready');
+          if (started) {
+            captionTimer.current = window.setTimeout(() => setOracleCaption(null), 900);
           }
+          onEnd?.();
         },
         onError: (error) => {
           setVadStatus(String(error));
-          setMode('ready');
-          if (speechModeRef.current !== 'ptt' && vadDetectorRef.current) {
-            vadDetectorRef.current.resume().catch(() => {});
-          }
+          onVoiceError?.('Voice playback unavailable');
         }
       });
     },
-    [isVoiceEnabled, setMode]
+    [isVoiceEnabled, onVoiceError, setMode]
   );
+
+  // External timer event hook (custom protocol action)
+  useEffect(() => {
+    const handleSetTimer = (e: Event) => {
+      const custom = e as CustomEvent<{ duration: number; label: string }>;
+      if (Number.isFinite(custom.detail?.duration) && custom.detail.duration > 0) {
+        setTimerRemaining(Math.ceil(custom.detail.duration));
+        setActiveTimer({
+          expiresAt: Date.now() + custom.detail.duration * 1000,
+          label: custom.detail.label || 'Focus Timer'
+        });
+      }
+    };
+    window.addEventListener('oracle_set_timer', handleSetTimer);
+    return () => window.removeEventListener('oracle_set_timer', handleSetTimer);
+  }, []);
 
   // Timer countdown hook
   useEffect(() => {
     if (!activeTimer) return;
-    if (activeTimer.remaining <= 0) {
+    const completion = window.setTimeout(() => {
+      setActiveTimer(null);
       soundEffects.playWakeChime();
       speakText('Your timer for ' + activeTimer.label + ' is complete.');
-      setActiveTimer(null);
-      return;
-    }
-
-    const interval = setInterval(() => {
-      setActiveTimer((prev) => {
-        if (!prev) return null;
-        if (prev.remaining <= 1) {
-          soundEffects.playWakeChime();
-          speakText('Your timer for ' + activeTimer.label + ' is complete.');
-          return null;
-        }
-        return { ...prev, remaining: prev.remaining - 1 };
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
+    }, Math.max(0, activeTimer.expiresAt - Date.now()));
+    return () => window.clearTimeout(completion);
   }, [activeTimer, speakText]);
+
+  useEffect(() => {
+    if (!isOpen || !activeTimer) return;
+    const update = () => setTimerRemaining(Math.max(0, Math.ceil((activeTimer.expiresAt - Date.now()) / 1000)));
+    update();
+    const tick = window.setInterval(update, 1000);
+    return () => window.clearInterval(tick);
+  }, [isOpen, activeTimer]);
 
   // Send message (Chat or Vision Q&A)
   const handleSend = useCallback(
-    async (queryText?: string) => {
-      const textToSend = (queryText || input).trim();
+    async (queryText?: string, voiceTranscript?: string) => {
+      const textToSend = (queryText ?? input).trim();
+      if (document.body.classList.contains('oracle-privacy-mode')) return;
+      const transcript = voiceTranscript ?? (queryText === undefined ? draftTranscript.current : undefined);
+      if (queryText === undefined) draftTranscript.current = undefined;
+      const systemCommand = normalizeVoiceCommand(textToSend);
+      // Local actions return before the chat request's state cleanup.
+      if (voiceTranscript !== undefined && !isGeneratingRef.current) setMode('ready');
+      if (/^(?:(?:initiate|activate|enter|start) (?:the )?)?(?:protocol hibernate|hibernate protocol|hibernate(?: system)?|low activity)$/.test(systemCommand)) {
+        setInput('');
+        executeProtocol('hibernate', hasAdminGrant());
+        return;
+      }
+      const sensorProtocol = /^(?:(activate|open|start|engage|initiate|stop|close|exit|deactivate) (?:the )?)?(?:protocol )?(sentry|sentinel)(?: protocol| mode)?$/.exec(systemCommand);
+      if (sensorProtocol) {
+        const [, verb, protocol] = sensorProtocol;
+        setInput('');
+        if (/^(stop|close|exit|deactivate)$/.test(verb ?? '')) {
+          window.dispatchEvent(new Event(`oracle_deactivate_${protocol}_protocol`));
+        } else {
+          executeProtocol(protocol, hasAdminGrant());
+        }
+        return;
+      }
+      if (/^(?:(?:activate|engage|initiate|start|run|enter|enable) (?:the )?)?(?:protocol ghost|ghost protocol|ghost(?: mode)?|privacy mode)$/.test(systemCommand)) {
+        setInput('');
+        executeProtocol('ghost');
+        return;
+      }
+      if (/^(?:(?:activate|activated|select|selected|engage|initiate|start|run|open|trigger) )?(?:the )?(?:protocol lockdown|lockdown protocol|lockdown|emergency restriction)$/.test(systemCommand)) {
+        setInput('');
+        executeProtocol('lockdown');
+        return;
+      }
       if (actionRef.current && textToSend) {
-        const lower = textToSend.toLowerCase().replace(/[^a-z]/g, '');
-        if (['confirm', 'yes', 'confirmlaunch', 'doit', 'proceed', 'open', 'launch'].includes(lower)) {
+        const lower = systemCommand;
+        if (['confirm', 'yes', 'confirm launch', 'do it', 'proceed'].includes(lower)) {
           setInput('');
           void decide(true);
           return;
         }
-        if (['cancel', 'no', 'cancellanunch', 'abort', 'dont', 'stop'].includes(lower)) {
+        if (['cancel', 'no', 'cancel launch', 'abort', 'don t', 'stop'].includes(lower)) {
           setInput('');
           void decide(false);
           return;
         }
       }
+      const cameraCommand = /^(?:(?:hey |okay |ok )?oracle )?(?:please )?(expand camera|collapse camera|show product details|hide product details|pin this result|unpin result|read the label|what size is this|show scan evidence)$/.exec(systemCommand)?.[1];
+      if (cameraCommand) {
+        const actions: Record<string, string> = {
+          'expand camera': 'expand', 'collapse camera': 'collapse',
+          'show product details': 'show', 'hide product details': 'hide',
+          'pin this result': 'pin', 'unpin result': 'unpin',
+          'read the label': 'read-label', 'what size is this': 'read-size',
+          'show scan evidence': 'evidence',
+        };
+        const action = actions[cameraCommand];
+        const handled = !window.dispatchEvent(new CustomEvent('oracle_camera_command', { cancelable: true, detail: action }));
+        if (handled) {
+          setInput('');
+          return;
+        }
+        if (action !== 'read-label' && action !== 'read-size') {
+          setInput('');
+          speakWithKokoro('Open the camera first.', { allowBargeIn: true });
+          return;
+        }
+      }
+      const adminCommand = systemCommand;
+      if (/^(?:(?:activate|activated|select|selected|engage|initiate|start|run|open|trigger) )?(?:the )?(?:protocol admin|admin protocol|admin)$/.test(adminCommand)) {
+        setInput('');
+        window.dispatchEvent(new CustomEvent('oracle_open_admin_protocol'));
+        return;
+      }
+      if (/^(?:deactivate|close|exit|relinquish|disable|lock) (?:the )?(?:protocol admin|admin protocol|admin|system)$/.test(adminCommand)) {
+        setInput('');
+        window.dispatchEvent(new CustomEvent('oracle_lock_admin'));
+        return;
+      }
+      // Built-in destinations take priority over customizable protocol aliases.
+      const voiceIntent = interpretVoiceIntent(textToSend);
+      if (voiceIntent.name !== 'unknown') {
+        setInput('');
+        setMode('ready');
+        onWake?.();
+        window.dispatchEvent(new CustomEvent(commandEvents[voiceIntent.name]));
+        const label = voiceIntent.name === 'open_settings' ? 'Open Settings' : taughtActionLabels[voiceIntent.name];
+        recordCommandAttempt(transcript, textToSend, label, 'Action requested');
+        return;
+      }
+      if (voiceIntent.requiresClarification) {
+        const message = 'Which destination did you mean? Try saying “open map”.';
+        setVadStatus(message);
+        if (transcript && isVoiceEnabled) speakText(message);
+        recordCommandAttempt(transcript, textToSend, 'Ambiguous command', 'Asked for a destination');
+        setInput(textToSend);
+        setMode('ready');
+        return;
+      }
+      const focus = !attachedImage && briefingFocus(textToSend);
+      if (focus && !privacyActive) {
+        setInput('');
+        window.dispatchEvent(new CustomEvent('oracle_brief_me', { detail: focus }));
+        return;
+      }
+      if (parseAtlasSpatialCommand(textToSend) || /^(?:(?:(?:hey|ok|okay) )?oracle[, ]+)?(?:please )?(?:route (?:from|to) .+|navigate to .+|show me .+ on (?:the )?map|(?:find|show)(?: me)? (?:the )?(?:nearest|nearby) (?:hospitals?|pharmacy|pharmacies|fuel|food|atms?)|where did i park)[?.!]*$/i.test(textToSend)) {
+        setInput('');
+        window.dispatchEvent(new CustomEvent('oracle_atlas_command', { detail: textToSend }));
+        return;
+      }
+      if (/^(?:please\s+)?(?:open|show|launch|view)?\s*(?:the\s+)?(?:workspace|records)$/i.test(systemCommand)) {
+        setInput('');
+        onOpenRecords?.();
+        return;
+      }
+      if (/^(?:please\s+)?(?:run|start|open|launch|execute|perform|begin)?\s*(?:a\s+)?(?:system\s+)?(?:self\s*diagnostic|diagnostics)$/i.test(systemCommand)) {
+        setInput('');
+        window.dispatchEvent(new CustomEvent('oracle_open_self_diagnostic'));
+        return;
+      }
+
+      if (!attachedImage && !isPetLaunchCommand(textToSend)) {
+        const allProtocols = getStoredProtocols();
+
+        // Check dynamic protocols (built-in + customized + user created) with strict command matching
+        const matches = allProtocols.filter(p =>
+          Array.isArray(p?.voicePhrases) && p.voicePhrases.some(phrase => {
+            const clean = typeof phrase === 'string' ? normalizeVoiceCommand(phrase) : '';
+            if (!clean) return false;
+            if (systemCommand === clean) return true;
+            if (clean.includes(' ')) return false;
+            // For single keyword phrases (e.g. "focus", "admin"), only match deliberate action commands
+            const commandPatterns = [
+              `activate ${clean}`, `activate protocol ${clean}`, `protocol ${clean}`, `${clean} protocol`,
+              `start ${clean}`, `start protocol ${clean}`, `run ${clean}`, `run protocol ${clean}`,
+              `open ${clean}`, `open protocol ${clean}`, `launch ${clean}`, `trigger ${clean}`
+            ];
+            return commandPatterns.some(cmd => systemCommand === cmd);
+          })
+        );
+        if (matches.length > 1) {
+          const message = 'More than one protocol uses that phrase. Use a unique phrase.';
+          setInput(textToSend);
+          setVadStatus(message);
+          recordCommandAttempt(transcript, textToSend, 'Conflicting protocol phrases', 'Asked for a unique phrase');
+          if (transcript && isVoiceEnabled) speakText(message);
+          return;
+        }
+        if (matches.length === 1) {
+          setInput('');
+          executeProtocol(matches[0].id, hasAdminGrant());
+          return;
+        }
+      }
+
       if ((!textToSend && !attachedImage) || isGeneratingRef.current || decision.current || actionRef.current) return;
+      const taught = attachedImage ? undefined : findTaughtCommand(textToSend);
+      if (!attachedImage) {
+        const phrase = parseTeachingRequest(textToSend);
+        if (phrase !== undefined) {
+          setTeachingPhrase(phrase || null);
+          setTeachingStatus(phrase ? '' : 'Try: When I say “Bring up Atlas,” open the map. You can teach actions for Atlas, Camera, or Oracle Pet.');
+          setInput('');
+          setMode('ready');
+          onWake?.();
+          return;
+        }
+        if (taught && taught.action !== 'launch_pet') {
+          setInput('');
+          setMode('ready');
+          window.dispatchEvent(new CustomEvent(commandEvents[taught.action]));
+          recordCommandAttempt(transcript, textToSend, taughtActionLabels[taught.action], 'Action requested via taught phrase');
+          return;
+        }
+      }
       isGeneratingRef.current = true;
       const request = ++generation.current;
       const controller = new AbortController(); pending.current = controller;
+      const speechVersion = ++speechQueueVersion.current;
+      stopSpeaking();
+      window.clearTimeout(captionTimer.current);
+      setOracleCaption(null);
+      const startedAt = performance.now();
+      const replyId = crypto.randomUUID();
+      let firstText = false;
+      let firstAudio = false;
+      let spokenThrough = 0;
+      let playing = false;
+      const voiceQueue: string[] = [];
+      const markAudio = () => {
+        if (firstAudio) return;
+        firstAudio = true;
+        recordResponseTime('request to first audio', startedAt);
+      };
+      const playNext = () => {
+        if (playing || request !== generation.current || controller.signal.aborted ||
+            speechVersion !== speechQueueVersion.current) return;
+        const next = voiceQueue.shift();
+        if (!next) return;
+        playing = true;
+        speakText(next, markAudio, () => {
+          playing = false;
+          playNext();
+        });
+      };
+      const queueSpeech = (text: string, complete = false) => {
+        if (!isVoiceEnabled || speechVersion !== speechQueueVersion.current) return;
+        const unspoken = text.slice(spokenThrough);
+        const boundary = /[.!?]+["”')\]]?\s+/.exec(unspoken);
+        const length = complete ? unspoken.length : boundary ? boundary.index! + boundary[0].length : 0;
+        if (!length) return;
+        spokenThrough += length;
+        const chunk = unspoken.slice(0, length).trim();
+        if (chunk) voiceQueue.push(chunk);
+        playNext();
+      };
 
       const currentImage = attachedImage;
+      const petRequest = !currentImage && (taught?.action === 'launch_pet' || isPetLaunchCommand(textToSend));
+      const historyId = petRequest
+        ? recordCommandAttempt(transcript, textToSend, taughtActionLabels.launch_pet, 'Requested launch confirmation')
+        : !currentImage && /^(?:open|close|launch|start|show|hide|turn on|turn off)\b/.test(systemCommand)
+          ? recordCommandAttempt(transcript, textToSend, 'No local command match', 'Sent to chat gateway')
+          : undefined;
+      draftImageUrl.current = null;
       setInput('');
       setAttachedImage(null);
 
@@ -300,6 +600,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
       setMessages((prev) => [...prev, userMsg]);
       setIsGenerating(true);
       setMode('thinking');
+      window.dispatchEvent(new CustomEvent('oracle_thinking_started'));
 
       try {
         let replyText = '';
@@ -325,33 +626,110 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
           modelName = data.model || ''; processing = data.processing || 'local';
         } else {
           // Natural Chat reasoning path (Qwen 2.5 via Ollama)
-          const res = await fetchWithAuth('/api/v1/chat', {
+          const preferences = readReplyPreferences();
+          if (transcript && !preferences.length) preferences.length = 'brief';
+          const previousQuestion = messages.slice().reverse().find(item => item.role === 'user' && !item.error)?.text;
+          const isDepartureFollowUp = /^when should i leave[?.!]*$/i.test(textToSend)
+            && /my next (?:meeting|calendar event)[?.!]*$/i.test(previousQuestion ?? '');
+          const needsLocation = isDepartureFollowUp || /^(?:(?:(?:hey|okay|ok) )?oracle[, ]+)?(?:please |(?:can|could) you tell me |tell me )?(?:how far am i from |when should i leave for my next meeting[?.!]*$)/i.test(textToSend);
+          const routeOrigin = needsLocation && navigator.geolocation
+            ? await new Promise<[number, number] | undefined>(resolve => {
+                navigator.geolocation.getCurrentPosition(
+                  ({ coords }) => resolve([coords.latitude, coords.longitude]),
+                  () => resolve(undefined),
+                  { timeout: 4000, maximumAge: 60000 },
+                );
+              })
+            : undefined;
+          const res = await fetchWithAuth('/api/v1/chat?stream=true', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: controller.signal,
             body: JSON.stringify({
-              text: textToSend,
-              message: textToSend,
-              history: messages.filter(item=>!item.error).slice(-10).map(item=>({role:item.role,text:item.text.slice(0,1200)}))
+              text: taught?.action === 'launch_pet' ? 'launch Oracle Pet' : textToSend,
+              message: taught?.action === 'launch_pet' ? 'launch Oracle Pet' : textToSend,
+              history: messages.filter(item=>!item.error).slice(-10).map(item=>({role:item.role,text:item.text.slice(0,1200)})),
+              reply_preferences: Object.keys(preferences).length ? preferences : undefined,
+              weather_city: localStorage.getItem('oracle_weather_city')?.trim().slice(0, 100) || undefined,
+              route_origin: routeOrigin,
             })
           });
 
-          const data = await readJson<any>(res);
-          replyText = data.message || data.reply || 'No response generated.';
+          const streamed = res.ok && res.headers.get('content-type')?.includes('application/x-ndjson');
+          const data = streamed ? await readChatStream(res, delta => {
+            if (!delta || request !== generation.current || controller.signal.aborted) return;
+            replyText += delta;
+            const text = replyText;
+            if (!firstText) {
+              firstText = true;
+              recordResponseTime('request to first text', startedAt);
+              setMessages(prev => [...prev, {
+                id: replyId, role: 'model', text, timestamp: userMsg.timestamp, processing: 'local'
+              }]);
+            } else {
+              setMessages(prev => prev.map(item => item.id === replyId ? { ...item, text } : item));
+            }
+            queueSpeech(text);
+          }, controller.signal) : await readJson<any>(res);
+          if (streamed) queueSpeech(replyText, true);
+          else replyText = data.message || data.reply || 'No response generated.';
           modelName = data.model || ''; processing = data.processing || ''; proposed = data.action;
-          if (data.timer) {
+          if (request !== generation.current || controller.signal.aborted) {
+            updateCommandOutcome(historyId, 'Request interrupted');
+            if (proposed) void localApi(`actions/${proposed.id}`, 'DELETE').catch(() => {});
+            return;
+          }
+          if (Number.isFinite(data.timer?.duration) && data.timer.duration > 0) {
+            setTimerRemaining(Math.ceil(data.timer.duration));
             setActiveTimer({
-              remaining: data.timer.duration,
-              total: data.timer.duration,
+              expiresAt: Date.now() + data.timer.duration * 1000,
               label: data.timer.label
             });
           }
+          if (data.action_trigger === 'open_desktop_hud' || data.action === 'open_desktop_hud') {
+            window.dispatchEvent(new CustomEvent('oracle_open_desktop_hud'));
+          } else if (data.action_trigger === 'open_admin_protocol') {
+            window.dispatchEvent(new CustomEvent('oracle_open_admin_protocol'));
+          } else if (data.action_trigger === 'open_self_diagnostic') {
+            window.dispatchEvent(new CustomEvent('oracle_open_self_diagnostic'));
+          } else if (data.action_trigger === 'lock_admin') {
+            window.dispatchEvent(new CustomEvent('oracle_lock_admin'));
+          } else if (data.action_trigger === 'activate_sentry') {
+            executeProtocol('sentry', hasAdminGrant());
+            return;
+          } else if (data.action_trigger === 'activate_sentinel') {
+            executeProtocol('sentinel', hasAdminGrant());
+            return;
+          } else if (data.action_trigger === 'activate_ghost') {
+            executeProtocol('ghost');
+            return;
+          } else if (data.action_trigger === 'activate_focus') {
+            window.dispatchEvent(new CustomEvent('oracle_activate_focus_protocol'));
+          } else if (data.action_trigger === 'activate_atlas') {
+            window.dispatchEvent(new CustomEvent('oracle_activate_atlas_protocol'));
+          } else if (data.action_trigger === 'activate_watchtower') {
+            window.dispatchEvent(new CustomEvent('oracle_activate_watchtower_protocol'));
+          } else if (data.action_trigger === 'activate_briefing') {
+            window.dispatchEvent(new CustomEvent('oracle_activate_briefing_protocol'));
+          } else if (data.action_trigger === 'activate_hibernate') {
+            executeProtocol('hibernate', hasAdminGrant());
+            return;
+          } else if (data.action_trigger === 'activate_lockdown') {
+            executeProtocol('lockdown');
+            return;
+          }
         }
 
-        if (request !== generation.current || controller.signal.aborted) { if(proposed) void localApi(`actions/${proposed.id}`,'DELETE').catch(()=>{}); return; }
-        if(proposed) {const next={id:proposed.id,name:proposed.name,expires:Date.now()+proposed.expires_in_seconds*1000};actionRef.current=next;setAction(next);}
+        if (request !== generation.current || controller.signal.aborted) { updateCommandOutcome(historyId, 'Request interrupted');if(proposed) void localApi(`actions/${proposed.id}`,'DELETE').catch(()=>{}); return; }
+        if(proposed) {
+          const next={id:proposed.id,name:proposed.name,expires:Date.now()+proposed.expires_in_seconds*1000,historyId};
+          updateCommandOutcome(historyId, 'Waiting for launch confirmation');
+          actionRef.current=next;setAction(next);
+        } else {
+          updateCommandOutcome(historyId, petRequest ? 'Gateway did not offer a launch confirmation' : 'Gateway responded');
+        }
         const modelMsg: Message = {
-          id: String(Date.now() + 1),
+          id: replyId,
           role: 'model',
           text: replyText,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -359,10 +737,21 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
           processing
         };
 
-        setMessages((prev) => [...prev, modelMsg]);
-        speakText(replyText);
+        recordResponseTime('request to full reply', startedAt);
+        if (firstText) {
+          setMessages(prev => prev.map(item => item.id === replyId ? modelMsg : item));
+        } else {
+          recordResponseTime('request to first text', startedAt);
+          setMessages(prev => [...prev, modelMsg]);
+          if (speechVersion === speechQueueVersion.current) speakText(replyText, markAudio);
+        }
       } catch (err) {
+        updateCommandOutcome(historyId, controller.signal.aborted ? 'Request interrupted' : 'Gateway request failed');
         if (request !== generation.current || controller.signal.aborted) return;
+        if (speechVersion === speechQueueVersion.current) {
+          speechQueueVersion.current++;
+          stopSpeaking();
+        }
         const errMsg: Message = {
           id: String(Date.now() + 2),
           role: 'model',
@@ -371,24 +760,30 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           model: 'system-fallback'
         };
-        setMessages((prev) => [...prev, errMsg]);
+        setMessages(prev => [...prev.filter(item => item.id !== replyId), errMsg]);
         setMode('ready');
       } finally {
-        if(request===generation.current) { pending.current=null; isGeneratingRef.current=false; setIsGenerating(false); setMode('ready'); }
+        if(request===generation.current) {
+          pending.current=null;
+          isGeneratingRef.current=false;
+          setIsGenerating(false);
+          window.dispatchEvent(new CustomEvent('oracle_thinking_ended'));
+          if (!isSpeakingActive()) setMode('ready');
+        }
       }
     },
-    [attachedImage, input, messages, setMode, speakText]
+    [attachedImage, input, isVoiceEnabled, messages, onWake, privacyActive, setMode, speakText]
   );
 
   const voiceHandlers = useRef({handleSend, speakText, onWake});
   voiceHandlers.current = {handleSend, speakText, onWake};
-  const voiceSuspended = currentMode === 'dormant' || currentMode === 'initializing';
-  const wakeFollowupUntil = useRef(0);
+  const voiceSuspended = privacyActive || currentMode === 'dormant' || currentMode === 'initializing';
 
   // Silero VAD lifecycle setup (persistent in background across chat open/close)
   useEffect(() => {
     setVadReady(false);
     setIsListening(false);
+    setIsVadActive(false);
     if (speechMode === 'ptt' || voiceSuspended) {
       if (vadDetectorRef.current) {
         vadDetectorRef.current.destroy().catch(() => {});
@@ -398,54 +793,108 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
       return;
     }
 
+    wakeFollowupUntil.current = 0;
     let active = true;
     let transcribing = false;
+    let utterance = 0;
+    let acceptingSpeech = false;
+    let partialPending = false;
+    let partialRequest: AbortController | null = null;
+    let utteranceGeneration = voiceGeneration.current;
     const detector = new SileroVoiceDetector({
+      onInputLevel,
       onSpeechStart: () => {
-        if (!active || isGeneratingRef.current || transcribing) return;
+        utterance++;
+        utteranceGeneration = voiceGeneration.current;
+        acceptingSpeech = active && !isGeneratingRef.current && !transcribing && !isSpeakingActive();
+        if (!acceptingSpeech) return;
+        speechQueueVersion.current++;
+        stopSpeaking();
+        setOracleCaption(null);
         setIsListening(true);
         setMode('listening');
         setVadStatus('Speech Detected');
+        setUserCaption({ text: '', state: 'listening' });
+      },
+      onSpeechProgress: async (chunk: Blob) => {
+        if (!acceptingSpeech || partialPending || isSpeakingActive() || utteranceGeneration !== voiceGeneration.current) return;
+        const currentUtterance = utterance;
+        partialPending = true;
+        const request = new AbortController();
+        partialRequest = request;
+        partialTranscription.current = request;
+        try {
+          const partial = await transcribeAudioBlob(chunk, request.signal, speechMode === 'wake', true);
+          if (active && acceptingSpeech && !request.signal.aborted && utteranceGeneration === voiceGeneration.current && currentUtterance === utterance && partial.trim()) {
+            setUserCaption({ text: partial.trim(), state: 'listening' });
+          }
+        } catch { /* ignore partial errors */ } finally {
+          partialPending = false;
+          partialRequest = null;
+          if (partialTranscription.current === request) partialTranscription.current = null;
+        }
       },
       onSpeechProb: (prob) => {
         if (active) setSpeechProb(prob);
       },
       onVADMisfire: () => {
-        if (!active) return;
+        if (!acceptingSpeech) return;
+        acceptingSpeech = false;
+        partialRequest?.abort();
+        if (!active || utteranceGeneration !== voiceGeneration.current) return;
         setIsListening(false);
         setMode('ready');
         setVadStatus(speechModeRef.current === 'wake' ? 'Standby ("Hey Oracle")' : 'Listening');
+        setUserCaption(null);
       },
       onSpeechEnd: async (wavBlob: Blob) => {
-        if (!active || isGeneratingRef.current || transcribing) return;
-        transcribing = true;
+        const transcriptionStarted = performance.now();
+        const accepted = acceptingSpeech;
+        acceptingSpeech = false;
+        partialRequest?.abort();
+        if (!accepted || !active || utteranceGeneration !== voiceGeneration.current) return;
         setIsListening(false);
-        soundEffects.playAcknowledgeTone();
+        if (isGeneratingRef.current || transcribing || isSpeakingActive()) {
+          setUserCaption(null);
+          return;
+        }
+        const request = new AbortController();
+        automaticTranscription.current = request;
+        transcribing = true;
         setVadStatus('Transcribing...');
-        setMode('thinking');
+        setMode('transcribing');
+        setUserCaption(prev => prev ? { ...prev, state: 'transcribing' } : { text: '', state: 'transcribing' });
 
         try {
-          const rawText = await transcribeAudioBlob(wavBlob);
-          if(!active)return;
+          const rawText = await transcribeAudioBlob(wavBlob, request.signal, speechMode === 'wake');
+          if (!active || request.signal.aborted) return;
+          recordResponseTime('voice endpoint to transcript', transcriptionStarted);
           if (!rawText.trim()) {
+            setUserCaption(null);
             setMode('ready');
             setVadStatus(speechModeRef.current === 'wake' ? 'Standby ("Hey Oracle")' : 'Listening');
             return;
           }
 
+          const showFinalCaption = () => {
+            const caption = { text: rawText.trim(), state: 'complete' as const };
+            setUserCaption(caption);
+            setTimeout(() => setUserCaption(current => current === caption ? null : current), 6000);
+          };
           if (speechModeRef.current === 'wake') {
             const { matched, cleanPrompt } = extractWakePrompt(rawText);
             if (!matched && Date.now() >= wakeFollowupUntil.current) {
               // Silently ignore ambient room chatter
+              setUserCaption(null);
               setMode('ready');
               setVadStatus('Standby ("Hey Oracle")');
               return;
             }
 
             wakeFollowupUntil.current = 0;
+            showFinalCaption();
             voiceHandlers.current.onWake?.();
-            // Wake word matched!
-            soundEffects.playWakeChime();
+            if (matched) soundEffects.playWakeChime();
             setVadStatus('Wake Triggered!');
             if (!cleanPrompt) {
               // User said just the wake word
@@ -456,17 +905,24 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
               return;
             }
 
-            await voiceHandlers.current.handleSend(cleanPrompt);
+            await voiceHandlers.current.handleSend(cleanPrompt, rawText.trim());
           } else {
             // Continuous VAD mode
+            soundEffects.playAcknowledgeTone();
             setVadStatus('Processing...');
-            await voiceHandlers.current.handleSend(rawText);
+            showFinalCaption();
+            await voiceHandlers.current.handleSend(rawText, rawText.trim());
           }
         } catch (err) {
+          if (!active || request.signal.aborted) return;
+          setUserCaption(null);
           console.warn('VAD transcription error:', err);
           setMode('ready');
           setVadStatus('Could not transcribe speech. Try again.');
-        } finally { transcribing = false; }
+        } finally {
+          if (automaticTranscription.current === request) automaticTranscription.current = null;
+          transcribing = false;
+        }
       },
       onError: (err) => {
         if (!active) return;
@@ -474,6 +930,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
         setIsListening(false);
         console.warn('Silero VAD error:', err);
         setVadStatus('VAD Error');
+        onVoiceError?.('Voice input unavailable');
         setMode('ready');
       }
     });
@@ -482,15 +939,21 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
     setVadStatus(speechMode === 'wake' ? 'Initializing Wake Word...' : 'Initializing Silero VAD...');
 
     detector.start()
-      .then(() => {
-        if (active) {
+      .then((started) => {
+        if (active && started) {
           setVadReady(true);
+          setIsVadActive(true);
           setVadStatus(speechMode === 'wake' ? 'Standby ("Hey Oracle")' : 'Listening for Voice...');
+        } else if (active && !started) {
+          setVadReady(false);
+          setIsVadActive(false);
+          setVadStatus('Standby');
         }
       })
       .catch((err) => {
         if (active) {
           setVadReady(false);
+          setIsVadActive(false);
           setIsListening(false);
           console.warn('Failed to start Silero VAD:', err);
           const msg = err instanceof Error ? err.message : String(err);
@@ -504,59 +967,114 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
 
     return () => {
       active = false;
+      acceptingSpeech = false;
+      partialRequest?.abort();
+      automaticTranscription.current?.abort();
       detector.destroy().catch(() => {});
       if (vadDetectorRef.current === detector) {
         vadDetectorRef.current = null;
       }
     };
-  }, [speechMode, voiceSuspended, setMode]);
+  }, [speechMode, voiceSuspended, setMode, onInputLevel, onVoiceError]);
 
   // Start Push-to-Talk manual recording
   const startRecording = async () => {
     const version=++pttVersion.current;
     try {
+      speechQueueVersion.current++;
       stopSpeaking();
-      const started = await pttRecorderRef.current?.start();
+      setOracleCaption(null);
+      const started = await pttRecorderRef.current?.start(text => {
+        if (version === pttVersion.current && text.trim()) {
+          setUserCaption({ text: text.trim(), state: 'listening' });
+        }
+      }, onInputLevel, (limit) => {
+        if (version !== pttVersion.current) return;
+        if (limit === 'duration') {
+          void stopRecordingAndSend(true);
+        } else {
+          setIsListening(false);
+          setUserCaption(null);
+          setVadStatus('Recording exceeded the size limit. Try a shorter recording.');
+          setMode('ready');
+        }
+      });
       if(version!==pttVersion.current || !started)return;
       setIsListening(true);
       setMode('listening');
+      setUserCaption({ text: '', state: 'listening' });
     } catch (err) {
       if(version!==pttVersion.current)return;
       setVadStatus(String(err));
+      onVoiceError?.('Microphone unavailable');
       setIsListening(false);
       setMode('ready');
     }
   };
 
   // Stop Push-to-Talk and transcribe offline
-  const stopRecordingAndSend = async () => {
-    if (!isListening) return;
+  const stopRecordingAndSend = async (reachedLimit = false) => {
+    if (!isListening && !reachedLimit) return;
     setIsListening(false);
-    setMode('thinking');
+    setMode('transcribing');
+    setUserCaption(prev => ({ text: prev?.text ?? '', state: 'transcribing' }));
 
     const version=pttVersion.current;
+    const transcriptionStarted = performance.now();
     try {
       const transcribedText = await pttRecorderRef.current?.stopAndTranscribe();
       if(version!==pttVersion.current)return;
+      recordResponseTime('push-to-talk release to transcript', transcriptionStarted);
       if (transcribedText && transcribedText.trim()) {
         if(version===pttVersion.current){
-          if (isOpen) { setInput(transcribedText.trim()); setMode('ready'); }
-          else { await handleSend(transcribedText.trim()); }
+          const caption = { text: transcribedText.trim(), state: 'complete' as const };
+          setUserCaption(caption);
+          setTimeout(() => setUserCaption(current => current === caption ? null : current), 6000);
+          if (!isOpen) onWake?.();
+          const text = transcribedText.trim();
+          if (!attachedImage && !isGeneratingRef.current && !actionRef.current && !decision.current) {
+            draftTranscript.current = undefined;
+            await voiceHandlers.current.handleSend(text, text);
+          } else {
+            draftTranscript.current = text;
+            setInput(text);
+            setMode('ready');
+          }
         }
       } else {
+        setUserCaption(null);
+        setVadStatus('No clear speech detected.');
         setMode('ready');
       }
     } catch (err) {
       if(version!==pttVersion.current)return;
+      setUserCaption(null);
       setVadStatus(String(err));
       setMode('ready');
     }
   };
 
-  const toggleRecording = () => {
+  const toggleRecording = async () => {
+    if (privacyActive || document.body.classList.contains('oracle-privacy-mode')) return;
     if (speechMode !== 'ptt') {
-      // Toggle back to PTT
-      setSpeechMode('ptt');
+      if (vadDetectorRef.current) {
+        if (isVadActive) {
+          cancelAutomaticSpeech();
+          await vadDetectorRef.current.pause().catch(() => {});
+          if (!isGeneratingRef.current) setMode('ready');
+          setIsVadActive(false);
+          setVadStatus('Muted (Press M to resume)');
+          setIsListening(false);
+        } else {
+          await vadDetectorRef.current.resume().catch(() => {});
+          const running = vadDetectorRef.current.isActive();
+          setIsVadActive(running);
+          setVadReady(running);
+          setVadStatus(running ? (speechMode === 'wake' ? 'Standby ("Hey Oracle")' : 'Listening for Voice...') : 'Microphone off');
+        }
+      } else {
+        setSpeechMode('vad');
+      }
       return;
     }
     if (isListening) {
@@ -570,21 +1088,21 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
     if (voiceRequest !== lastVoiceRequest.current) {
       lastVoiceRequest.current = voiceRequest;
       if (speechMode !== 'ptt') {
-        setSpeechMode('ptt');
-        setVadStatus('Standby');
+        toggleRecording();
       } else if (!voiceSuspended) {
         toggleRecording();
       }
     }
   }, [isOpen, voiceRequest, speechMode]);
   useEffect(() => {
+    const isEngineActive = !voiceSuspended && (speechMode === 'ptt' ? isListening : (vadReady && isVadActive));
     onVoiceStatus?.({
-      active: !voiceSuspended && (speechMode === 'ptt' ? isListening : vadReady),
+      active: isEngineActive,
       mode: speechMode,
       isListening: !voiceSuspended && isListening,
-      vadStatus
+      vadStatus: (!isEngineActive && vadStatus === 'Listening for Voice...') ? 'Microphone off' : vadStatus
     });
-  }, [speechMode, isListening, vadReady, voiceSuspended, vadStatus, onVoiceStatus]);
+  }, [speechMode, isListening, vadReady, isVadActive, voiceSuspended, vadStatus, onVoiceStatus]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -597,7 +1115,9 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       if(file.size>6*1024*1024){setVadStatus('Choose an image up to 6 MiB.');return;}
+      discardDraftImage();
       const url = URL.createObjectURL(file);
+      draftImageUrl.current = url;
       attachments.current.add(url);
       setAttachedImage({ blob: file, url, source:'file' });
       if (!input.trim()) {
@@ -608,6 +1128,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
   };
 
   return (
+    <>
     <AnimatePresence>
       {isOpen && (
         <motion.div
@@ -648,8 +1169,8 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
                       }}
                       title="Click to cancel timer"
                     >
-                      ⏱️ {Math.floor(activeTimer.remaining / 60)}:
-                      {String(activeTimer.remaining % 60).padStart(2, '0')}
+                      ⏱️ {Math.floor(timerRemaining / 60)}:
+                      {String(timerRemaining % 60).padStart(2, '0')}
                       <X size={10} style={{ marginLeft: '3px' }} />
                     </button>
                   )}
@@ -658,7 +1179,13 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
                     type="button"
                     className="hud-blade-icon-btn"
                     onClick={() => {
-                      if (isVoiceEnabled) stopSpeaking();
+                      if (isVoiceEnabled) {
+                        speechQueueVersion.current++;
+                        stopSpeaking();
+                        window.clearTimeout(captionTimer.current);
+                        setOracleCaption(null);
+                        if (currentMode === 'speaking') setMode('ready');
+                      }
                       setIsVoiceEnabled((prev) => !prev);
                     }}
                     title={isVoiceEnabled ? 'Voice output active (Kokoro)' : 'Voice output muted'}
@@ -721,7 +1248,13 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
               <button
                 type="button"
                 className="hud-blade-tool-btn"
-                onClick={onOpenRecords}
+                onClick={() => {
+                  if (!hasAdminGrant()) {
+                    speakWithKokoro('Access restricted. Administrator protocol clearance required.', { allowBargeIn: true });
+                    return;
+                  }
+                  onOpenRecords?.();
+                }}
                 title="Open Notes, reminders & records"
               >
                 <span>Workspace</span>
@@ -754,7 +1287,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
                   setMessages([]);
                   for (const url of attachments.current) URL.revokeObjectURL(url);
                   attachments.current.clear();
-                  setAttachedImage(null);
+                  discardDraftImage();
                   if (actionRef.current) void decide(false);
                 }}
                 title="Reset conversation thread"
@@ -768,6 +1301,29 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
               <div className="hud-blade-research-tray">
                 <ResearchTools />
               </div>
+            )}
+
+            {(teachingPhrase !== null || teachingStatus) && (
+              <section className="record-action hud-blade-action-banner" aria-label="Teach Oracle">
+                {teachingPhrase !== null && (
+                  <>
+                    <p>{taughtActionLabels[teachingPhrase.action]} when you say “{teachingPhrase.phrase}”?</p>
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <button type="button" onClick={() => {
+                        try {
+                          changeTaughtCommand(null, teachingPhrase);
+                          setTeachingPhrase(null);
+                          setTeachingStatus('Phrase saved. Manage it in Settings → Shortcuts.');
+                        } catch (error) {
+                          setTeachingStatus(error instanceof Error ? error.message : 'Could not save the phrase.');
+                        }
+                      }}>Save phrase</button>
+                      <button type="button" onClick={() => { setTeachingPhrase(null); setTeachingStatus(''); }}>Cancel</button>
+                    </div>
+                  </>
+                )}
+                {teachingStatus && <p role="status">{teachingStatus}</p>}
+              </section>
             )}
 
             {/* Application Launch Confirmation Banner */}
@@ -806,7 +1362,13 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
                     <button
                       type="button"
                       className="hud-blade-starter-btn"
-                      onClick={onOpenRecords}
+                      onClick={() => {
+                        if (!hasAdminGrant()) {
+                          speakWithKokoro('Access restricted. Administrator protocol clearance required.', { allowBargeIn: true });
+                          return;
+                        }
+                        onOpenRecords?.();
+                      }}
                     >
                       <Sparkles size={12} style={{ color: 'var(--accent)' }} />
                       <span>Access Notes & Memories</span>
@@ -827,7 +1389,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
                 </div>
               ) : (
                 messages.map((m) => (
-                  <div key={m.id} className={`hud-blade-message ${m.role}`}>
+                  <div key={m.id} className={`hud-blade-message ${m.role}`} style={{ contentVisibility: 'auto', containIntrinsicBlockSize: 'auto 100px' }}>
                     <div className="hud-blade-msg-header">
                       <span className="hud-blade-msg-author">{m.role === 'user' ? 'USER' : 'ORACLE'}</span>
                       {m.model && <span className="hud-blade-msg-badge">{m.model}</span>}
@@ -839,6 +1401,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
                         <img
                           src={m.imageUrl}
                           alt="Attached visual input"
+                          loading="lazy"
                           style={{
                             maxWidth: '100%',
                             maxHeight: '160px',
@@ -865,7 +1428,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
                 ))
               )}
 
-              {isGenerating && (
+              {isGenerating && messages.at(-1)?.role === 'user' && (
                 <div className="hud-blade-message model generating">
                   <div className="hud-blade-msg-header">
                     <span className="hud-blade-msg-author">ORACLE</span>
@@ -884,7 +1447,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
             {/* OCR / Image Reader when image attached */}
             {attachedImage && (
               <div style={{ padding: '0 18px', maxHeight: '35vh', overflow: 'auto' }}>
-                <CaptureReader image={attachedImage.blob} source={attachedImage.source} />
+                <CaptureReader key={attachedImage.url} image={attachedImage.blob} source={attachedImage.source} />
               </div>
             )}
 
@@ -903,7 +1466,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
                   </span>
                   <button
                     type="button"
-                    onClick={() => setAttachedImage(null)}
+                    onClick={discardDraftImage}
                     style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', padding: '4px' }}
                     title="Remove image"
                   >
@@ -972,7 +1535,10 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
                       : 'Transmit command or query...'
                   }
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={event => {
+                    if (!event.target.value.trim()) draftTranscript.current = undefined;
+                    setInput(event.target.value);
+                  }}
                   onKeyDown={handleKeyDown}
                   disabled={isGenerating}
                 />
@@ -997,5 +1563,7 @@ export const ConversationHUD: React.FC<ConversationHUDProps> = ({
         </motion.div>
       )}
     </AnimatePresence>
+
+  </>
   );
 };

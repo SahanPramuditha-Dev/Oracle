@@ -1,24 +1,6 @@
 # ORACLE documentation
 
-This folder contains the current implementation guides, phase evidence and the
-original product scope. ORACLE is an early local single-user assistant; the
-implemented software is narrower than the full feature inventory.
-
-## Current status
-
-The Presence frontend is connected to the FastAPI backend. PostgreSQL stores
-notes, tasks and image memories; the current conversation and unsaved drafts
-remain page-local. Local OCR/QR reading, voice software, person/object
-recognition, research retrieval and the bounded Google Calendar/Tasks connector
-are implemented. Physical camera, microphone and speaker acceptance remains
-open.
-
-The latest increment passed 146 backend tests, 11 browser integration tests, 3
-Google browser tests and the production frontend build. These checks cover
-bounded implemented paths, not the complete product scope. See
-[development status](DEVELOPMENT_STATUS.md) for dated evidence and
-[frontend/backend integration](FRONTEND_BACKEND_INTEGRATION.md) for runtime
-boundaries.
+The [development roadmap](ORACLE_ROADMAP.md) is the current working-tree capability and release checklist for Oracle Central, Atlas and Android Companion. The [development status](DEVELOPMENT_STATUS.md) records dated test evidence and integration limits. Documented working-tree changes may need a newer checkout than the public branch.
 
 ## Run and verify
 
@@ -28,6 +10,14 @@ The backend runs at `http://127.0.0.1:8000`; the Vite frontend runs at
 
 ## Implementation guides
 
+- [Design system and color theme](DESIGN_SYSTEM.md)
+- [Atlas maps and location intelligence](MAPS_AND_LOCATION_INTELLIGENCE.md)
+- [Companion build, pairing and roadmap](ORACLE_ROADMAP.md#existing-companion-build-baseline--15-november-2026)
+- [Live object detection](LIVE_OBJECT_DETECTION.md)
+- [Product identification](PRODUCT_INTELLIGENCE.md)
+- [Vision and foreground separation](VISION_IMPROVEMENTS.md)
+- [Camera audit and device checks](CAMERA_AUDIT.md)
+- [Performance audit](SYSTEM_PERFORMANCE_AUDIT.md)
 - [Frontend/backend integration](FRONTEND_BACKEND_INTEGRATION.md)
 - [Google Workspace connection](GOOGLE_WORKSPACE_CONNECTION.md)
 - [Database operations](DATABASE.md)
@@ -35,6 +25,12 @@ The backend runs at `http://127.0.0.1:8000`; the Vite frontend runs at
 - [Local voice](LOCAL_VOICE.md)
 - [People recognition](PEOPLE_RECOGNITION.md)
 - [Phase 8 research](PHASE_8_RESEARCH.md)
+
+## Maintain the documentation
+
+- Update the affected setup or feature guide in the same change as its commands, settings, routes, or behavior.
+- Update the roadmap when implementation status changes. Record validation in the development status with the date, tested revision or working-tree state, and the checks run. Record phone or hardware acceptance only after testing on the device.
+- Review the index when adding or moving a guide. Keep original requirements and dated evidence available for reference.
 
 ## Planning and scope
 

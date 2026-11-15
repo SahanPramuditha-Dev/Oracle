@@ -1,14 +1,15 @@
 export interface ObjectObservation { class:string; confidence:number; box:[number,number,number,number]; ambiguous?:boolean }
-interface Track { detection:ObjectObservation; count:number }
-export class ObjectConfirmation {
-  private tracks:Track[]=[];
+interface Track<T extends ObjectObservation> { detection:T; count:number }
+export class ObjectConfirmation<T extends ObjectObservation = ObjectObservation> {
+  private tracks:Track<T>[]=[];
   private seen=0;
+  constructor(private minConfidence=0, private maxGap=15000, private requiredReads=2) {}
   reset(){this.tracks=[];this.seen=0;}
-  update(detections:ObjectObservation[],now:number){
-    if(now-this.seen>15000)this.reset();
+  update(detections:T[],now:number){
+    if(now-this.seen>this.maxGap)this.reset();
     const available=new Set(this.tracks);
-    const next=detections.filter(d=>!d.ambiguous && Array.isArray(d.box) && d.box.length===4 && d.box.every(Number.isFinite) && Number.isFinite(d.confidence)).map(d=>{
-      const [x,y,w,h]=d.box;let previous:Track|undefined;let best=.25;
+    const next=detections.filter(d=>!d.ambiguous && Array.isArray(d.box) && d.box.length===4 && d.box.every(Number.isFinite) && d.box[2]>0 && d.box[3]>0 && Number.isFinite(d.confidence) && d.confidence>=this.minConfidence && d.confidence<=1).map(d=>{
+      const [x,y,w,h]=d.box;let previous:Track<T>|undefined;let best=.25;
       for(const t of available){
         if(t.detection.class!==d.class)continue;
         const [a,b,c,e]=t.detection.box;
@@ -20,6 +21,6 @@ export class ObjectConfirmation {
       return {detection:d,count:previous?previous.count+1:1};
     });
     this.tracks=next;this.seen=now;
-    return next.map(t=>({...t.detection,confirmed:t.count>=2}));
+    return next.map(t=>({...t.detection,confirmed:t.count>=this.requiredReads}));
   }
 }

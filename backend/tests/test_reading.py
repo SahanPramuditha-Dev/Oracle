@@ -4,7 +4,7 @@ import threading
 
 import cv2
 import pytest
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageOps, PngImagePlugin
 from fastapi.testclient import TestClient
 from app.main import create_app
 from app.reading import ImageReader, MAX_IMAGE_BYTES
@@ -81,3 +81,45 @@ def test_real_ocr_and_qr_on_label_fixture(tmp_path):
     result = reader.read(output.getvalue(), (0,0,100,100))
     assert 'A12345' in result['text'] and result['qr'] == ['https://example.com/oracle-test']
     assert reader.read(output.getvalue(), (0,0,65,100))['qr'] == []
+
+
+def test_fast_qr_scan_endpoint_and_mirrored_detection():
+    picture = Image.new('RGB', (400, 400), 'white')
+    qr = Image.fromarray(cv2.QRCodeEncoder_create().encode('https://atlasworld.lk'))
+    qr = ImageOps.expand(qr, border=4, fill=255).resize((300, 300), Image.Resampling.NEAREST)
+    picture.paste(qr, (50, 50))
+
+    # Standard orientation
+    out_normal = BytesIO()
+    metadata = PngImagePlugin.PngInfo()
+    metadata.add_text('fixture', 'x' * 40_000)
+    picture.save(out_normal, format='PNG', pnginfo=metadata)
+    normal_bytes = out_normal.getvalue()
+    assert len(normal_bytes) > 32_000
+
+    # Horizontally flipped (mirrored webcam)
+    out_flipped = BytesIO()
+    picture.transpose(Image.FLIP_LEFT_RIGHT).save(out_flipped, format='PNG')
+    flipped_bytes = out_flipped.getvalue()
+
+    reader = ImageReader()
+    # Test scan_qr directly
+    res_normal = reader.scan_qr(normal_bytes)
+    assert res_normal['found'] is True
+    assert res_normal['results'][0]['url'] == 'https://atlasworld.lk'
+    assert res_normal['results'][0]['is_url'] is True
+
+    res_flipped = reader.scan_qr(flipped_bytes)
+    assert res_flipped['found'] is True
+    assert res_flipped['results'][0]['url'] == 'https://atlasworld.lk'
+
+    with client(reader) as app:
+        response = app.post('/api/v1/images/qr', headers=AUTH, content=normal_bytes)
+        assert response.status_code == 200
+        assert response.json()['found'] is True
+        assert response.json()['results'][0]['url'] == 'https://atlasworld.lk'
+
+        response_flip = app.post('/api/v1/images/qr', headers=AUTH, content=flipped_bytes)
+        assert response_flip.status_code == 200
+        assert response_flip.json()['found'] is True
+        assert response_flip.json()['results'][0]['url'] == 'https://atlasworld.lk'

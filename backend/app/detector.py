@@ -28,9 +28,11 @@ COCO_CLASSES = [
 
 class ObjectDetector:
     def __init__(self, model_path: Path | str | None = None, class_names: list[str] | None = None, logits: bool = False):
-        self.model_path = Path(model_path) if model_path else MODEL_PATH
+        live_model = MODEL_PATH.with_name('yolov8m.onnx')
+        self.model_path = Path(model_path) if model_path else (live_model if live_model.is_file() else MODEL_PATH)
         self.class_names = list(class_names) if class_names is not None else COCO_CLASSES
         self.logits = logits
+        self.supports_masks = False
         self.extra_inputs = {}
         self._session = None
         self._lock = threading.Lock()
@@ -52,7 +54,7 @@ class ObjectDetector:
                     self._session = ort.InferenceSession(str(self.model_path), providers=providers)
         return self._session
 
-    def detect(self, image: Image.Image, conf_threshold: float = 0.35, nms_threshold: float = 0.45) -> dict[str, Any]:
+    def detect(self, image: Image.Image, conf_threshold: float = 0.35, nms_threshold: float = 0.45, include_masks: bool = True) -> dict[str, Any]:
         """Decode standard COCO YOLOv8 detection or segmentation ONNX outputs."""
         started = time.perf_counter()
         orig_w, orig_h = image.size
@@ -97,7 +99,7 @@ class ObjectDetector:
             row = rows[i]
             box = boxes[i]
             item = {'class': self.class_names[int(ids[row])], 'confidence': round(float(confidence[row]), 3), 'box': box}
-            if proto is not None:
+            if proto is not None and include_masks:
                 logits = predictions[row, 4+nc:] @ proto.reshape(proto.shape[0], -1)
                 mask = (logits.reshape(proto.shape[1:]) > 0).astype(np.float32)
                 mask = cv2.resize(mask, (size, size))[top:top + rh, left:left + rw]
@@ -116,4 +118,5 @@ class ObjectDetector:
         return {'detections': detections, 'person_count': count, 'has_person': count > 0,
                 'classes': sorted({d['class'] for d in detections}), 'segmentation': proto is not None,
                 'image_width': orig_w, 'image_height': orig_h,
+                'model': self.model_path.name, 'supported_class_count': len(self.class_names),
                 'latency_ms': round((time.perf_counter() - started) * 1000, 2)}

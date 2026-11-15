@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="100%" height="100%">
+  <defs>
+    <!-- Background Canvas Gradient -->
+    <radialGradient id="bg" cx="50%" cy="28%" r="80%">
+      <stop offset="0%" stop-color="#0e1b33" />
+      <stop offset="60%" stop-color="#070d1a" />
+      <stop offset="100%" stop-color="#03050a" />
+    </radialGradient>
+
+    <!-- Celestial Sphere Subtle Depth -->
+    <radialGradient id="sphereGrad" cx="38%" cy="32%" r="65%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="70%" stop-color="#0a101d" />
+      <stop offset="100%" stop-color="#04060b" />
+    </radialGradient>
+
+    <!-- Orbital Ring Electric Gradient -->
+    <linearGradient id="orbitGrad" x1="10%" y1="90%" x2="90%" y2="10%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="48%" stop-color="#818cf8" />
+      <stop offset="88%" stop-color="#00f3ff" />
+      <stop offset="100%" stop-color="#ffffff" />
+    </linearGradient>
+
+    <!-- Outer Beacon Halo -->
+    <radialGradient id="beaconHalo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#00f3ff" stop-opacity="0.7" />
+      <stop offset="60%" stop-color="#00f3ff" stop-opacity="0.25" />
+      <stop offset="100%" stop-color="#00f3ff" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <!-- Container Squircle with subtle cyber cyan edge -->
+  <rect width="32" height="32" rx="7" fill="url(#bg)" />
+  <rect x="0.6" y="0.6" width="30.8" height="30.8" rx="6.4" fill="none" stroke="#00f3ff" stroke-width="1.2" stroke-opacity="0.38" />
+
+  <!-- Central Celestial Sphere -->
+  <circle cx="16" cy="16" r="9.2" fill="url(#sphereGrad)" stroke="#cbd5e1" stroke-width="1.8" stroke-opacity="0.9" />
+
+  <!-- Tilted Orbital Ring (-34 deg) -->
+  <ellipse cx="16" cy="16" rx="13.2" ry="4.4" transform="rotate(-34 16 16)" fill="none" stroke="url(#orbitGrad)" stroke-width="2.2" />
+
+  <!-- Satellite Beacon -->
+  <circle cx="25.2" cy="9.5" r="3.6" fill="url(#beaconHalo)" />
+  <circle cx="25.2" cy="9.5" r="2.2" fill="#00f3ff" />
+  <circle cx="25.2" cy="9.5" r="1.1" fill="#ffffff" />
+</svg>

@@ -1,0 +1,239 @@
+/**
+ * ORACLE — Obsidian Glass Select & Dropdown System
+ * Deep cyber-minimalist floating popovers with micro-transitions.
+ */
+
+:root {
+  color-scheme: dark;
+}
+
+/* Global native fallback to prevent Chromium white popups */
+select,
+option,
+optgroup {
+  color-scheme: dark !important;
+  background-color: #0b0f17 !important;
+  color: #e8ebef !important;
+}
+
+.oracle-select-root {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.oracle-select-trigger {
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(232, 235, 239, 0.04);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  border-radius: 6px;
+  padding: 6px 10px;
+  min-height: 32px;
+  color: var(--fg, #e8ebef);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 450;
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oracle-select-trigger:hover:not(:disabled) {
+  background: rgba(232, 235, 239, 0.07);
+  border-color: rgba(232, 235, 239, 0.14);
+}
+
+.oracle-select-trigger:focus-visible,
+.oracle-select-trigger.is-open {
+  border-color: rgba(157, 180, 211, 0.45);
+  box-shadow: 0 0 10px rgba(157, 180, 211, 0.18);
+  background: rgba(232, 235, 239, 0.06);
+}
+
+.oracle-select-trigger:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+.oracle-select-content {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+
+.oracle-select-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: #ffffff;
+}
+
+.oracle-select-placeholder {
+  color: var(--muted, rgba(232, 235, 239, 0.45));
+}
+
+.oracle-select-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(157, 180, 211, 0.12);
+  color: var(--accent, #9db4d3);
+  border: 1px solid rgba(157, 180, 211, 0.2);
+  white-space: nowrap;
+}
+
+.oracle-select-chevron {
+  color: var(--muted, rgba(232, 235, 239, 0.48));
+  flex-shrink: 0;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.oracle-select-chevron.is-open {
+  transform: rotate(180deg);
+  color: var(--accent, #9db4d3);
+}
+
+/* Floating Portal Menu */
+.oracle-select-menu-portal {
+  position: fixed;
+  z-index: 999999;
+  background: rgba(10, 14, 20, 0.96);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(232, 235, 239, 0.12);
+  border-radius: 8px;
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.8),
+    0 0 16px rgba(157, 180, 211, 0.08);
+  padding: 4px;
+  overflow-y: auto;
+  max-height: 260px;
+  box-sizing: border-box;
+  animation: oracleSelectFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes oracleSelectFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.oracle-select-menu-portal::-webkit-scrollbar {
+  width: 4px;
+}
+
+.oracle-select-menu-portal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.oracle-select-menu-portal::-webkit-scrollbar-thumb {
+  background: rgba(232, 235, 239, 0.16);
+  border-radius: 3px;
+}
+
+.oracle-select-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: rgba(232, 235, 239, 0.82);
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 11px;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.oracle-select-item:hover:not(.is-disabled) {
+  background: rgba(232, 235, 239, 0.08);
+  color: #ffffff;
+}
+
+.oracle-select-item.is-selected {
+  background: rgba(157, 180, 211, 0.14);
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.oracle-select-item.is-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.oracle-select-item-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+
+.oracle-select-item-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--accent, #9db4d3);
+}
+
+.oracle-select-item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.oracle-select-item-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+
+.oracle-select-item-desc {
+  font-size: 9.5px;
+  color: var(--muted, rgba(232, 235, 239, 0.45));
+}
+
+/* Hidden accessible synchronized native select */
+.oracle-select-hidden-native {
+  position: absolute !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  top: 0 !important;
+  left: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  z-index: -1 !important;
+}
+
+.oracle-select-item.is-highlighted:not(.is-disabled) {
+  outline: 1px solid rgba(157, 180, 211, 0.38);
+  outline-offset: -1px;
+  background: rgba(157, 180, 211, 0.12);
+}

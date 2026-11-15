@@ -1,5 +1,7 @@
 # ORACLE development readiness
 
+This document records the original planning or integration baseline. See the [current setup](../README.md#start-the-workspace) for current development information.
+
 Updated 5 November 2026. Phases 0–9 have active implementation evidence: PostgreSQL records, the Presence frontend, local vision/voice software, research retrieval and the bounded Google Workspace connector. Physical camera/printed-label and microphone/speaker checks remain open. See [development phases](DEVELOPMENT_PHASES.md) for the authoritative scope and [development status](DEVELOPMENT_STATUS.md) for dated evidence. Earlier checklist entries below describe the foundation gate and should not be read as the current product inventory.
 
 ## Decisions needed before implementation

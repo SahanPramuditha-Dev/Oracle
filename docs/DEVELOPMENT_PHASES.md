@@ -1,5 +1,7 @@
 # ORACLE development phases
 
+This document records the original planning or integration baseline. See the [current roadmap](ORACLE_ROADMAP.md) for current development information.
+
 ## Current increment — connected UI acceptance, 5 November 2026
 
 The replacement Presence UI is implemented and connected to FastAPI for chat, voice, camera, notes, reminders and image memories. PostgreSQL remains the durable record store. See [current integration evidence](FRONTEND_BACKEND_INTEGRATION.md).

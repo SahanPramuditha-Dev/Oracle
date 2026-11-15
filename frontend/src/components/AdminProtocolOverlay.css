@@ -1,0 +1,444 @@
+/**
+ * Oracle — Minimalist Executive Biometric Identity Gate
+ * Zero clutter • Pure Apple/Linear elegance • Oracle Obsidian Glass
+ */
+
+.admin-auth-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 7, 12, 0.78);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  padding: 20px;
+  animation: cleanBackdropFade 0.2s ease-out forwards;
+}
+
+@keyframes cleanBackdropFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.admin-clean-card {
+  position: relative;
+  width: 420px;
+  max-width: min(420px, calc(100vw - 32px));
+  background: rgba(14, 18, 24, 0.95);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  border-radius: 20px;
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(255, 255, 255, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  color: var(--fg, #e8ebef);
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+  user-select: none;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.admin-clean-card.unlocked {
+  border-color: rgba(34, 197, 94, 0.45);
+  box-shadow: 0 40px 100px -20px rgba(0, 0, 0, 0.95), 0 0 35px rgba(34, 197, 94, 0.18), inset 0 1px 0 rgba(34, 197, 94, 0.2);
+}
+
+/* Header */
+.clean-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(232, 235, 239, 0.06);
+  background: rgba(232, 235, 239, 0.015);
+}
+
+.clean-header-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.clean-lock-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(232, 235, 239, 0.04);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  color: var(--accent, #9db4d3);
+  transition: all 0.25s ease;
+}
+
+.clean-lock-badge.verified {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+.clean-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  letter-spacing: -0.01em;
+}
+
+.clean-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted, rgba(232, 235, 239, 0.52));
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clean-close-btn:hover {
+  background: rgba(232, 235, 239, 0.08);
+  border-color: rgba(232, 235, 239, 0.12);
+  color: #ffffff;
+}
+
+/* Card Body */
+.clean-card-body {
+  padding: 16px 18px;
+}
+
+.clean-step-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+/* STEP 1: Camera Viewport */
+.clean-camera-viewport {
+  position: relative;
+  width: 100%;
+  height: 230px;
+  border-radius: 14px;
+  background: #06090e;
+  border: 1.5px solid rgba(232, 235, 239, 0.08);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.7);
+}
+
+.clean-camera-viewport.verified {
+  border-color: #22c55e;
+  box-shadow: 0 0 24px rgba(34, 197, 94, 0.35);
+}
+
+.clean-video-element {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+
+/* Subtle Silhouette Oval */
+.clean-camera-guide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.clean-guide-oval {
+  width: 90px;
+  height: 120px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(255, 255, 255, 0.2);
+  animation: cleanGuidePulse 2.5s infinite ease-in-out;
+}
+
+@keyframes cleanGuidePulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.98); }
+  50% { opacity: 0.7; transform: scale(1.02); }
+}
+
+/* Single Bottom Overlay Pill on Video */
+.clean-id-overlay {
+  position: absolute;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 500;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.25s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+}
+
+.clean-id-overlay.scanning {
+  background: rgba(10, 14, 20, 0.85);
+  border: 1px solid rgba(232, 235, 239, 0.12);
+  color: var(--muted, rgba(232, 235, 239, 0.52));
+}
+
+.clean-id-overlay.verified {
+  background: rgba(22, 101, 52, 0.9);
+  border: 1px solid #22c55e;
+  color: #ffffff;
+}
+
+/* STEP 2: Voice Box */
+.clean-voice-box {
+  width: 100%;
+  height: 230px;
+  border-radius: 14px;
+  background: radial-gradient(circle at center, rgba(16, 26, 42, 0.6) 0%, rgba(6, 9, 14, 0.96) 100%);
+  border: 1.5px solid rgba(232, 235, 239, 0.08);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.7);
+}
+
+.clean-voice-box.recording {
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: inset 0 0 24px rgba(56, 189, 248, 0.12);
+}
+
+.clean-voice-box.verified {
+  border-color: #22c55e;
+  box-shadow: 0 0 24px rgba(34, 197, 94, 0.35);
+}
+
+.clean-voice-tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--faint, rgba(232, 235, 239, 0.29));
+}
+
+.clean-passphrase {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-sky, #38bdf8);
+  letter-spacing: -0.01em;
+  transition: color 0.2s ease;
+}
+
+.clean-passphrase.recording {
+  color: #93c5fd;
+  animation: cleanVoicePulse 1.4s infinite ease-in-out;
+}
+
+@keyframes cleanVoicePulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
+.clean-passphrase.verified {
+  color: #4ade80;
+}
+
+.clean-waveform-wrap {
+  width: 85%;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clean-voice-status {
+  font-size: 10.5px;
+  color: var(--muted, rgba(232, 235, 239, 0.52));
+}
+
+.text-emerald {
+  color: #4ade80 !important;
+}
+
+.text-sky {
+  color: var(--accent-sky, #38bdf8) !important;
+}
+
+.text-amber {
+  color: #fbbf24 !important;
+}
+
+.text-rose {
+  color: #f87171 !important;
+}
+
+/* Voice Actions */
+.clean-voice-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  height: 36px;
+}
+
+.clean-action-btn {
+  flex: 1;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  color: #bae6fd;
+  transition: all 0.15s ease;
+}
+
+.clean-action-btn:hover {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.45);
+  color: #ffffff;
+}
+
+.clean-action-btn.is-recording {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+  animation: cleanVoicePulse 1.4s infinite ease-in-out;
+}
+
+.clean-action-ghost {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 14px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  background: rgba(232, 235, 239, 0.04);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  color: var(--muted, rgba(232, 235, 239, 0.52));
+  transition: all 0.15s ease;
+}
+
+.clean-action-ghost:hover {
+  background: rgba(232, 235, 239, 0.08);
+  border-color: rgba(232, 235, 239, 0.14);
+  color: #ffffff;
+}
+
+/* STEP 3: Success */
+.clean-success-pane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 230px;
+  text-align: center;
+}
+
+.clean-success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  box-shadow: 0 0 25px rgba(34, 197, 94, 0.2);
+  margin-bottom: 12px;
+}
+
+.clean-success-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 3px;
+}
+
+.clean-success-desc {
+  font-size: 11px;
+  color: var(--muted, rgba(232, 235, 239, 0.52));
+}
+
+.clean-success-desc strong {
+  color: #ffffff;
+}
+
+/* Footer */
+.clean-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: rgba(10, 13, 18, 0.7);
+  border-top: 1px solid rgba(232, 235, 239, 0.06);
+}
+
+.clean-cancel-btn {
+  padding: 6px 12px;
+  border-radius: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--muted, rgba(232, 235, 239, 0.52));
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clean-cancel-btn:hover {
+  background: rgba(232, 235, 239, 0.06);
+  border-color: rgba(232, 235, 239, 0.1);
+  color: #ffffff;
+}
+
+.clean-bypass-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 13px;
+  border-radius: 7px;
+  background: rgba(232, 235, 239, 0.04);
+  border: 1px solid rgba(232, 235, 239, 0.08);
+  color: var(--muted, rgba(232, 235, 239, 0.52));
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.clean-bypass-btn:hover {
+  background: rgba(232, 235, 239, 0.08);
+  border-color: rgba(232, 235, 239, 0.14);
+  color: #ffffff;
+}
+.admin-access-denied {
+  display: grid;
+  gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid rgba(248, 113, 113, .35);
+  border-radius: 8px;
+  background: rgba(127, 29, 29, .18);
+  color: #fca5a5;
+}

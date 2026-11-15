@@ -15,6 +15,16 @@ test('face confirmation resets on loss, identity change, ambiguity and expiry',(
   expect(t.update([face],14000)[0].matched).toBe(false);
 });
 
+test('face tracking smooths small movement and briefly holds a missed read', () => {
+  const tracker = new FaceConfirmation();
+  tracker.update([face], 0);
+  const [tracked] = tracker.update([{ ...face, box: [20, 10, 100, 100] }], 120);
+  expect(tracked.box[0]).toBe(14.5);
+  expect(tracker.update([], 240)[0]).toMatchObject({ held: true, lastSeen: 120 });
+  expect(tracker.update([], 360)).toEqual([]);
+  expect(tracker.update([face], 480)[0].matched).toBe(false);
+});
+
 test('profile categories save by ID and photo verification expires',async({page})=>{
   let identity={id:'person_test',name:'Alice',notes:'Personal notes',created:1,relationship:'guest',permission:'standard',enrollment_state:'incomplete',sample_count:1,sample_ids:['sample_test']};
   await page.route('**/api/v1/people',r=>r.fulfill({json:{people:[identity]}}));
@@ -26,6 +36,7 @@ test('profile categories save by ID and photo verification expires',async({page}
     return r.fulfill({json:{verified:true,verification_state:'verified',cosine_score:.8,expires_at:Date.now()+1500,access_allowed:false,liveness:'not_evaluated'}});
   });
   await page.goto('/',{waitUntil:'domcontentloaded'});await page.waitForFunction(()=>Boolean(window.ORACLE));await page.keyboard.press('Escape');
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
   await page.getByRole('button',{name:'Open System Settings & Biometrics',exact:true}).click();
   await page.getByText('Edit profile / verify face',{exact:true}).click();
   await page.getByRole('combobox',{name:'Relationship for person_test',exact:true}).selectOption('family');

@@ -1,3 +1,4 @@
+import { OracleSelect } from './OracleSelect';
 import { useEffect, useRef, useState } from 'react';
 import { localApi, fetchWithAuth, readJson } from '../utils/api';
 
@@ -27,7 +28,7 @@ export function ResearchTools(){
     <h3>RESEARCH</h3>
     <p>Search queries go online. Documents are not saved. AI answers use only the local model, with no cloud fallback.</p>
     <form onSubmit={e=>{e.preventDefault();void run('search',{query,provider});}}>
-      <label>Search provider<select disabled={busy} value={provider} onChange={e=>setProvider(e.target.value)}><option value="wikipedia">Wikipedia</option><option value="searxng">Local SearXNG (requires setup)</option></select></label>
+      <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}><span>Search provider</span><OracleSelect aria-label="Search provider" disabled={busy} value={provider} onChange={val => setProvider(val)} options={[{ value: "wikipedia", label: "Wikipedia" }, { value: "searxng", label: "Local SearXNG (requires setup)" }]} /></label>
       <label>Search Wikipedia<input required maxLength={200} value={query} onChange={e=>setQuery(e.target.value)}/></label>
       <button disabled={busy}>Search sources</button>
     </form>

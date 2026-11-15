@@ -1,19 +1,20 @@
 from io import BytesIO
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 from app.main import create_app
 from app.desktop import DesktopActions
-from app.voice import LocalVoice, MAX_AUDIO_BYTES
+from app.voice import LocalVoice, MAX_AUDIO_BYTES, MODEL, VoiceConfig
 
 AUTH = {'Authorization':'Bearer voice-test'}
 
 
-def silence(seconds=1):
+def silence(seconds=1, sample=b'\0\0'):
     output=BytesIO()
     with wave.open(output,'wb') as audio:
-        audio.setnchannels(1);audio.setsampwidth(2);audio.setframerate(16000);audio.writeframes(b'\0\0' * (16000*seconds))
+        audio.setnchannels(1);audio.setsampwidth(2);audio.setframerate(16000);audio.writeframes(sample * (16000*seconds))
     return output.getvalue()
 
 
@@ -24,6 +25,70 @@ def test_voice_boundary_and_limits():
         assert client.post('/api/v1/voice/transcribe',headers=AUTH|{'Content-Type':'audio/wav'},content=b'x'*(MAX_AUDIO_BYTES+1)).status_code==413
         assert client.post('/api/v1/voice/transcribe',headers=AUTH|{'Content-Type':'text/plain'},content=b'x').status_code==415
         assert client.post('/api/v1/voice/speak',headers=AUTH,json={'text':'x'*2001}).status_code==422
+
+
+def test_voice_configuration_is_explicit():
+    config = VoiceConfig.from_env()
+    assert config.language in {'en', 'si', 'auto'}
+    assert config.device in {'auto', 'cpu', 'cuda'}
+
+
+def test_default_model_selection(monkeypatch, tmp_path):
+    small = tmp_path / 'whisper-small'
+    monkeypatch.setattr('app.voice.MULTILINGUAL_MODEL', small)
+    monkeypatch.setenv('ORACLE_VOICE_MODEL', '')
+    monkeypatch.setenv('ORACLE_VOICE_LANGUAGE', 'en')
+    assert VoiceConfig.from_env().model_path == MODEL
+
+    monkeypatch.setenv('ORACLE_VOICE_LANGUAGE', 'si')
+    assert VoiceConfig.from_env().model_path == small
+
+    small.mkdir()
+    (small / 'model.bin').touch()
+    monkeypatch.setenv('ORACLE_VOICE_LANGUAGE', 'en')
+    assert VoiceConfig.from_env().model_path == small
+
+    monkeypatch.setenv('ORACLE_VOICE_MODEL', str(MODEL))
+    assert VoiceConfig.from_env().model_path == MODEL
+
+
+def test_transcription_preserves_ambiguous_commands(monkeypatch):
+    voice = LocalVoice()
+    monkeypatch.setattr(voice, 'capabilities', lambda: {'transcription_ready': True})
+    monkeypatch.setattr(voice, 'parakeet_ready', lambda: False)
+    voice.model = SimpleNamespace(
+        transcribe=lambda *args, **kwargs: ([SimpleNamespace(text='open it')], None),
+    )
+
+    result = voice.transcribe(silence(sample=b'\x00\x10'), preprocess=False)
+
+    assert result['text'] == 'open it'
+    assert result['diagnostics']['raw_text'] == result['text']
+
+
+def test_parakeet_handles_final_english_transcripts(monkeypatch):
+    voice = LocalVoice()
+    monkeypatch.setattr(voice, 'capabilities', lambda: {'transcription_ready': True})
+    monkeypatch.setattr(voice, 'parakeet_ready', lambda: True)
+    monkeypatch.setattr(voice, 'transcribe_parakeet', lambda audio: 'Open Notepad.')
+    voice.model = SimpleNamespace(
+        transcribe=lambda *args, **kwargs: ([SimpleNamespace(text='Hey Oracle.')], None),
+    )
+    audio = silence(sample=b'\x00\x10')
+
+    final = voice.transcribe(audio, include_profile=False)
+    assert final['text'] == 'Open Notepad.'
+    assert final['diagnostics']['engine'] == 'parakeet'
+    assert voice.transcribe(audio, wake_mode=True, include_profile=False)['text'] == 'Hey Oracle.'
+    assert voice.transcribe(audio, interim=True)['diagnostics']['engine'] == 'whisper'
+
+
+def test_voice_diagnostics_endpoint_reports_runtime_configuration():
+    with TestClient(create_app(token='voice-test', voice=LocalVoice())) as client:
+        response = client.get('/api/v1/voice/diagnostics', headers=AUTH)
+        assert response.status_code == 200
+        data = response.json()
+        assert {'model', 'language', 'device', 'compute_type', 'max_seconds'} <= data.keys()
 
 
 def test_silence_invalid_audio_and_duration_do_not_invent_speech(monkeypatch):

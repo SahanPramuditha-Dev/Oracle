@@ -3,7 +3,7 @@
  * Exact port of ORACLE_Dormant_v4.html
  */
 
-export type OracleMode = 'initializing' | 'dormant' | 'ready' | 'listening' | 'thinking' | 'speaking';
+export type OracleMode = 'initializing' | 'dormant' | 'ready' | 'listening' | 'transcribing' | 'thinking' | 'speaking';
 
 export interface OracleState {
   mode: OracleMode;
@@ -18,6 +18,7 @@ export const MODE_NAMES: Record<OracleMode, string> = {
   dormant: 'DORMANT',
   ready: 'READY',
   listening: 'LISTENING',
+  transcribing: 'TRANSCRIBING',
   thinking: 'THINKING',
   speaking: 'SPEAKING'
 };
@@ -27,6 +28,7 @@ export const HINTS: Record<OracleMode, string> = {
   dormant: 'Click anywhere or press Space to wake',
   ready: '',
   listening: 'Listening',
+  transcribing: 'Transcribing…',
   thinking: 'Processing',
   speaking: 'Responding'
 };
@@ -36,6 +38,7 @@ export const ENERGY_LEVELS: Record<OracleMode, number> = {
   dormant: 0,
   ready: 0.08,
   listening: 0.5,
-  thinking: 0.72,
-  speaking: 0.6
+  transcribing: 0.42,
+  thinking: 0.85,
+  speaking: 0.78
 };

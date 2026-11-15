@@ -48,7 +48,7 @@ def test_enroll_list_identify_and_delete(client):
 
     # 2. Enroll a person
     enroll_res = client.post(
-        '/api/v1/people/enroll?name=Sahan&notes=Lead%20Architect',
+        '/api/v1/people/enroll?name=Sahan&notes=Lead%20Architect&consent=true',
         headers={**AUTH, 'Content-Type': 'image/jpeg'},
         content=portrait_bytes,
     )
@@ -111,7 +111,7 @@ def test_enroll_rejects_image_without_face(client):
     img.save(buf, format='JPEG')
 
     res = client.post(
-        '/api/v1/people/enroll?name=Ghost',
+        '/api/v1/people/enroll?name=Ghost&consent=true',
         headers={**AUTH, 'Content-Type': 'image/jpeg'},
         content=buf.getvalue(),
     )
@@ -124,7 +124,7 @@ def test_verify_1_to_1_matching(client):
 
     # Enroll Sahand
     enroll = client.post(
-        '/api/v1/people/enroll?name=Sahand&notes=Admin',
+        '/api/v1/people/enroll?name=Sahand&notes=Admin&consent=true',
         headers={**AUTH, 'Content-Type': 'image/jpeg'},
         content=portrait_bytes,
     ).json()
@@ -167,8 +167,8 @@ def test_verify_1_to_1_matching(client):
 
 def test_same_name_creates_distinct_identities_and_delete_is_scoped(client):
     portrait_bytes = FIXTURE_PATH.read_bytes()
-    first = client.post('/api/v1/people/enroll?name=Same',headers={**AUTH,'Content-Type':'image/jpeg'},content=portrait_bytes).json()
-    second = client.post('/api/v1/people/enroll?name=Same',headers={**AUTH,'Content-Type':'image/jpeg'},content=portrait_bytes).json()
+    first = client.post('/api/v1/people/enroll?name=Same&consent=true',headers={**AUTH,'Content-Type':'image/jpeg'},content=portrait_bytes).json()
+    second = client.post('/api/v1/people/enroll?name=Same&consent=true',headers={**AUTH,'Content-Type':'image/jpeg'},content=portrait_bytes).json()
     assert first['id'] != second['id']
     assert len(client.get('/api/v1/people',headers=AUTH).json()['people'])==2
     assert client.post('/api/v1/people/verify?name=Same',headers={**AUTH,'Content-Type':'image/jpeg'},content=portrait_bytes).status_code==409
@@ -178,7 +178,7 @@ def test_same_name_creates_distinct_identities_and_delete_is_scoped(client):
 
 def test_duplicate_sample_rejected_and_explicit_id_required(client):
     portrait_bytes=FIXTURE_PATH.read_bytes()
-    first=client.post('/api/v1/people/enroll?name=Multi',headers={**AUTH,'Content-Type':'image/jpeg'},content=portrait_bytes).json()
+    first=client.post('/api/v1/people/enroll?name=Multi&consent=true',headers={**AUTH,'Content-Type':'image/jpeg'},content=portrait_bytes).json()
     assert client.post('/api/v1/people/enroll?name=Multi&append_sample=true',headers={**AUTH,'Content-Type':'image/jpeg'},content=portrait_bytes).status_code==422
     r=client.post(f"/api/v1/people/enroll?name=Multi&person_id={first['id']}&append_sample=true",headers={**AUTH,'Content-Type':'image/jpeg'},content=portrait_bytes)
     assert r.status_code==409
@@ -188,7 +188,7 @@ def test_duplicate_sample_rejected_and_explicit_id_required(client):
 
 def test_permissions_are_explicit_and_revocation_blocks_matching(client):
     payload=FIXTURE_PATH.read_bytes()
-    identity=client.post('/api/v1/people/enroll?name=Sahan&notes=ROOT_ADMIN_AUTHORITY',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload).json()
+    identity=client.post('/api/v1/people/enroll?name=Sahan&notes=ROOT_ADMIN_AUTHORITY&consent=true',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload).json()
     pid=identity['id']
     def identify():
         return client.post('/api/v1/people/identify',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload).json()
@@ -204,8 +204,8 @@ def test_permissions_are_explicit_and_revocation_blocks_matching(client):
 
 def test_ambiguous_distinct_identities_are_not_recognized(client):
     payload=FIXTURE_PATH.read_bytes()
-    first=client.post('/api/v1/people/enroll?name=One',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload).json()
-    client.post('/api/v1/people/enroll?name=Two',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload)
+    first=client.post('/api/v1/people/enroll?name=One&consent=true',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload).json()
+    client.post('/api/v1/people/enroll?name=Two&consent=true',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload)
     match=client.post('/api/v1/people/identify',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload).json()['identified'][0]
     assert match['recognition_state']=='uncertain'
     assert match['matched'] is False
@@ -217,7 +217,7 @@ def test_ambiguous_distinct_identities_are_not_recognized(client):
 
 def test_profile_validation_and_sample_deletion(client):
     payload=FIXTURE_PATH.read_bytes()
-    identity=client.post('/api/v1/people/enroll?name=One',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload).json()
+    identity=client.post('/api/v1/people/enroll?name=One&consent=true',headers={**AUTH,'Content-Type':'image/jpeg'},content=payload).json()
     pid=identity['id']
     assert client.patch(f'/api/v1/people/{pid}',headers=AUTH,json={'permission':'root'}).status_code==422
     assert client.patch(f'/api/v1/people/{pid}',headers=AUTH,json={'name':'  '}).status_code==422

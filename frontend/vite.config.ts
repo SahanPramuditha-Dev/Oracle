@@ -48,7 +48,7 @@ export default defineConfig({
         configure(proxy) {
           proxy.on('proxyReq', (request, incoming) => {
             const origin = incoming.headers.origin;
-            const permitted = !origin || ['http://127.0.0.1:5173','http://localhost:5173'].includes(origin);
+            const permitted = !origin || /^https?:\/\/(?:127\.0\.0\.1|localhost):(5173|3000)$/.test(origin);
             if (permitted && incoming.headers['x-oracle-client'] === 'web') {
               request.setHeader('Authorization', `Bearer ${fs.readFileSync(path.resolve(__dirname,'../data/dev/api-token'),'utf8').trim()}`);
             }
@@ -63,9 +63,11 @@ export default defineConfig({
     emptyOutDir: false,
     assetsDir: 'assets',
     sourcemap: true,
+    chunkSizeWarningLimit: 900,
     rollupOptions: {
       output: {
         manualChunks: {
+          maplibre: ['maplibre-gl'],
           three: ['three'],
           vendor: ['react', 'react-dom', 'framer-motion', 'lucide-react']
         }

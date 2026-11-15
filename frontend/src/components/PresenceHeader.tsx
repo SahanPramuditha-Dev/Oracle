@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCurrentUser } from '../utils/currentUser';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { OracleMode, MODE_NAMES } from '../types';
-import { TimeState } from '../App';
+import { usePresenceClock } from '../hooks/usePresenceClock';
 import { SensorIndicators } from './SensorIndicators';
-import { MicOff } from 'lucide-react';
+import { Shield, ShieldCheck, PanelsTopLeft, LayoutGrid, Navigation, ScanLine, Check, ChevronDown, Sliders, Moon, MessageSquare } from 'lucide-react';
+import { SensorsTelemetry } from '../hooks/useSensors';
 
 export interface VoiceEngineHeaderInfo {
   active: boolean;
@@ -12,25 +13,112 @@ export interface VoiceEngineHeaderInfo {
   mode: string;
   vadStatus: string;
 }
-import { SensorsTelemetry } from '../hooks/useSensors';
 
 interface PresenceHeaderProps {
   mode: OracleMode;
-  time: TimeState;
   sensors: SensorsTelemetry;
   voiceEngine?: VoiceEngineHeaderInfo;
   onMuteVoice?: () => void;
   onSleep: (e: React.MouseEvent) => void;
-  onInitialize?: () => void;
   onOpenChat?: () => void;
   onOpenRecords?: () => void;
+  isWorkspaceOpen?: boolean;
   onOpenSettings?: () => void;
+  onOpenProducts?: () => void;
+  onOpenMaps?: () => void;
+  isMapOpen?: boolean;
+  onOpenAdminProtocol?: () => void;
+  onSignOutAdmin?: () => void;
+  lockdownStatus?: string | null;
+  sentinelEvents?: string[];
+  onStopSentinel?: () => void;
+  isAdmin?: boolean;
 }
 
-export const PresenceHeader: React.FC<PresenceHeaderProps> = ({ mode, time, sensors, voiceEngine, onMuteVoice, onSleep, onInitialize, onOpenChat, onOpenRecords, onOpenSettings }) => {
+export const PresenceHeader: React.FC<PresenceHeaderProps> = ({
+  mode,
+  sensors,
+  voiceEngine: _voiceEngine,
+  onMuteVoice: _onMuteVoice,
+  onSleep,
+  onOpenChat,
+  onOpenRecords,
+  isWorkspaceOpen,
+  onOpenSettings,
+  onOpenProducts,
+  onOpenMaps,
+  isMapOpen,
+  onOpenAdminProtocol,
+  onSignOutAdmin,
+  lockdownStatus,
+  sentinelEvents,
+  onStopSentinel,
+  isAdmin,
+}) => {
+  const { time } = usePresenceClock();
   const currentUser = useCurrentUser();
   const isDormant = mode === 'dormant';
   const isInitializing = mode === 'initializing';
+  const isUserAdmin = isAdmin ?? currentUser?.permission === 'administrator';
+  const [openPanel, setOpenPanel] = useState<'applications' | 'status' | 'settings' | null>(null);
+  const panelTrigger = useRef<HTMLButtonElement>(null);
+  const applicationsPanel = useRef<HTMLDivElement>(null);
+  const focusFirstApplication = useRef(false);
+  const isApplicationsOpen = openPanel === 'applications';
+  const statusTrigger = useRef<HTMLButtonElement>(null);
+  const sentinelVisible = sentinelEvents !== undefined;
+  useEffect(() => {
+    if (sentinelVisible && statusTrigger.current) {
+      panelTrigger.current = statusTrigger.current;
+      setOpenPanel('status');
+    }
+  }, [sentinelVisible]);
+  const reduceMotion = useReducedMotion();
+
+  const togglePanel = (panel: NonNullable<typeof openPanel>, event: React.MouseEvent<HTMLButtonElement>) => {
+    panelTrigger.current = event.currentTarget;
+    focusFirstApplication.current = panel === 'applications' && !isApplicationsOpen && event.detail === 0;
+    setOpenPanel(openPanel === panel ? null : panel);
+  };
+
+  useEffect(() => {
+    if (!isApplicationsOpen || !focusFirstApplication.current) return;
+    focusFirstApplication.current = false;
+    applicationsPanel.current?.querySelector('button')?.focus();
+  }, [isApplicationsOpen]);
+
+  useEffect(() => {
+    if (!openPanel) return;
+    const closeOutside = (event: PointerEvent) => {
+      if (!panelTrigger.current?.parentElement?.contains(event.target as Node)) setOpenPanel(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpenPanel(null);
+      panelTrigger.current?.focus();
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    window.addEventListener('keydown', closeOnEscape, true);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      window.removeEventListener('keydown', closeOnEscape, true);
+    };
+  }, [openPanel]);
+
+  useEffect(() => {
+    if (isDormant || isInitializing) setOpenPanel(null);
+  }, [isDormant, isInitializing]);
+
+  const openChat = () => {
+    sensors.pingChat();
+    onOpenChat?.();
+  };
+
+  const clearance = isUserAdmin
+    ? `${currentUser?.name || 'Administrator'} · Admin Level 5`
+    : currentUser ? `${currentUser.name} · Standard` : 'Normal Operator · Restricted';
 
   return (
     <header className="header">
@@ -55,7 +143,7 @@ export const PresenceHeader: React.FC<PresenceHeaderProps> = ({ mode, time, sens
         </div>
       </div>
 
-      {/* Docked Clock in Header (50% Center) with Silky Quintic Morph Transition - Hidden during initialization */}
+      {/* Clock dock for the shared transition between the header and footer. */}
       {!isInitializing && (
         <div className="header-dock">
           {!isDormant && (
@@ -69,7 +157,7 @@ export const PresenceHeader: React.FC<PresenceHeaderProps> = ({ mode, time, sens
               aria-label="Current time"
             >
               <span className="clock-docked-main">
-                {time.hours}:{time.minutes}:{time.seconds}
+                {time}
               </span>
             </motion.div>
           )}
@@ -79,74 +167,172 @@ export const PresenceHeader: React.FC<PresenceHeaderProps> = ({ mode, time, sens
       {/* Sensory Telemetry Indicators - Hidden during initialization */}
       {!isInitializing && (
         <div className="header-right">
-          <span className="hud-chip" aria-label="Current user">{currentUser ? `${currentUser.name} · ${currentUser.permission === 'administrator' ? 'Administrator' : 'Standard user'}` : 'No user identified'}</span>
-          <button className="hud-chip" onClick={onOpenRecords}>Workspace</button>
-
-          {/* Hands-Free Voice Status Dock */}
-          {voiceEngine?.active && (
-            <div
-              className={`voice-dock-chip ${voiceEngine.isListening ? 'listening' : ''}`}
-              onClick={onOpenChat}
-              role="button"
-              tabIndex={0}
-              title="Voice Engine Active — Click to open Chat Drawer"
+          {/* Direct Workspace Action Button */}
+          {onOpenRecords && (
+            <button
+              type="button"
+              className={`hud-chip workspace-header-chip ${isWorkspaceOpen ? 'active' : ''}`}
+              onClick={onOpenRecords}
+              title="Open Workspace (W)"
+              aria-label="Workspace"
             >
-              <div className="voice-dock-bars">
-                <span className="v-bar v-bar-1" />
-                <span className="v-bar v-bar-2" />
-                <span className="v-bar v-bar-3" />
-              </div>
-              <span className="voice-dock-label">
-                {voiceEngine.isListening ? 'LISTENING' : voiceEngine.mode === 'wake' ? 'VOICE LINK' : 'CONVERSATION'}
-              </span>
-              <button
-                type="button"
-                className="voice-dock-mute"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onMuteVoice?.();
-                }}
-                title="Mute Hands-Free Voice Engine (Return to Push-to-Talk)"
-                aria-label="Mute Voice"
-              >
-                <MicOff size={11} strokeWidth={2} />
-              </button>
-            </div>
+              <PanelsTopLeft size={15} aria-hidden="true" />
+              <span className="header-nav-label">Workspace</span>
+            </button>
           )}
 
-          <SensorIndicators sensors={sensors} isDormant={isDormant} onOpenChat={onOpenChat} onOpenSettings={onOpenSettings} />
-
-          <div
-            className="status"
-            onClick={onInitialize}
-            title="Click to trigger system initialization (or press I)"
-            style={{ cursor: 'pointer' }}
-            role="button"
-            tabIndex={0}
-          >
-            <span className="status-led" aria-hidden="true" />
-            <span id="status-label">{MODE_NAMES[mode]}</span>
+          <div className="header-workspace-dropdown-wrap">
             <button
-              className="sleep-btn"
-              id="sleep"
-              aria-label="Enter dormant mode"
-              title="Enter dormant mode (D)"
-              onClick={onSleep}
+              type="button"
+              className="hud-chip workspace-header-chip"
+              onClick={(event) => togglePanel('applications', event)}
+              aria-expanded={isApplicationsOpen}
+              aria-controls={isApplicationsOpen ? 'presence-applications' : undefined}
+              title="Open applications"
+              aria-label="Applications Menu"
             >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+              <LayoutGrid size={15} aria-hidden="true" />
+              <span className="header-nav-label">Applications</span>
+              <ChevronDown
                 aria-hidden="true"
-              >
-                <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
-              </svg>
+                size={10}
+                strokeWidth={2}
+                style={{
+                  marginLeft: 4,
+                  transform: isApplicationsOpen ? 'rotate(180deg)' : 'none',
+                  transition: reduceMotion ? 'none' : 'transform 0.2s ease',
+                  opacity: 0.75
+                }}
+              />
             </button>
+
+            <AnimatePresence>
+              {isApplicationsOpen && (
+                <motion.div
+                  ref={applicationsPanel}
+                  id="presence-applications"
+                  className="applications-dropdown-menu applications-launcher"
+                  initial={{ opacity: 0, y: reduceMotion ? 0 : -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: reduceMotion ? 0 : -4 }}
+                  transition={{ duration: reduceMotion ? 0 : 0.16, ease: [0.16, 1, 0.3, 1] }}
+                >
+                  {onOpenProducts && (
+                    <button type="button" className="applications-dropdown-item"
+                      onClick={() => { setOpenPanel(null); onOpenProducts(); }}>
+                      <ScanLine size={16} aria-hidden="true" />
+                      <span>Identify product</span>
+                    </button>
+                  )}
+                  {onOpenMaps && (
+                    <button
+                      type="button"
+                      onClick={() => { setOpenPanel(null); onOpenMaps(); }}
+                      className="applications-dropdown-item"
+                      aria-pressed={Boolean(isMapOpen)}
+                    >
+                      <Navigation size={16} aria-hidden="true" />
+                      <span>Atlas Map</span>
+                      {isMapOpen && <Check size={14} className="applications-active-mark" aria-hidden="true" />}
+                    </button>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          <SensorIndicators sensors={sensors} isDormant={isDormant} onOpenChat={openChat} />
+
+          <div className="header-toolbar-panel">
+            <button
+              type="button"
+              className="hud-chip header-status-chip"
+              ref={statusTrigger}
+              aria-expanded={openPanel === 'status'}
+              aria-controls={openPanel === 'status' ? 'presence-status' : undefined}
+              onClick={(event) => togglePanel('status', event)}
+            >
+              <span className="status-led" aria-hidden="true" />
+              <span id="status-label">{MODE_NAMES[mode]}</span>
+              {isAdmin === true && <span title="Admin Protocol is active">Admin active</span>}
+              <ChevronDown size={11} aria-hidden="true" />
+            </button>
+            {openPanel === 'status' && (
+              <div className="applications-dropdown-menu" id="presence-status">
+                <div className="applications-dropdown-header">{clearance}</div>
+                {lockdownStatus && <p role="status">{lockdownStatus}</p>}
+                {sentinelEvents && (
+                  <details open>
+                    <summary>Sentinel activity</summary>
+                    <ul>
+                      {sentinelEvents.map((event, index) => <li key={index}>{event}</li>)}
+                    </ul>
+                    <button type="button" className="applications-dropdown-item" onClick={onStopSentinel}>Stop Sentinel</button>
+                  </details>
+                )}
+                <dl className="header-service-list">
+                  {[sensors.mic, sensors.camera, sensors.chat].map(({ label, detail }) => (
+                    <div key={label}>
+                      <dt>{label}</dt>
+                      <dd>{detail}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {onOpenAdminProtocol && (
+                  <button type="button" className="applications-dropdown-item"
+                    onClick={() => { setOpenPanel(null); onOpenAdminProtocol(); }}>
+                    {isUserAdmin ? <ShieldCheck size={15} /> : <Shield size={15} />}
+                    {isUserAdmin ? 'Re-verify administrator clearance' : 'Activate Admin Protocol'}
+                  </button>
+                )}
+                {isUserAdmin && onSignOutAdmin && (
+                  <button type="button" className="applications-dropdown-item"
+                    onClick={() => { setOpenPanel(null); onSignOutAdmin(); }}>
+                    <Shield size={15} />
+                    End administrator clearance
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="header-toolbar-panel">
+            <button
+              type="button"
+              className="hud-chip header-settings-chip"
+              aria-label="Settings"
+              title="Settings"
+              aria-expanded={openPanel === 'settings'}
+              aria-controls={openPanel === 'settings' ? 'presence-settings' : undefined}
+              onClick={(event) => togglePanel('settings', event)}
+            >
+              <Sliders size={15} aria-hidden="true" />
+            </button>
+            {openPanel === 'settings' && (
+              <div className="applications-dropdown-menu" id="presence-settings">
+                {onOpenSettings && (
+                  <button type="button" className="applications-dropdown-item"
+                    aria-label="Open System Settings & Biometrics"
+                    onClick={() => { setOpenPanel(null); onOpenSettings(); }}>
+                    <Sliders size={15} aria-hidden="true" />
+                    System settings
+                  </button>
+                )}
+                {onOpenChat && (
+                  <button type="button" className="applications-dropdown-item header-chat-overflow"
+                    onClick={() => { setOpenPanel(null); openChat(); }}>
+                    <MessageSquare size={15} aria-hidden="true" />
+                    Open chat
+                  </button>
+                )}
+                <button type="button" id="sleep" className="applications-dropdown-item"
+                  title="Enter dormant mode (D)"
+                  onClick={(event) => { setOpenPanel(null); onSleep(event); }}>
+                  <Moon size={15} aria-hidden="true" />
+                  Enter dormant mode
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

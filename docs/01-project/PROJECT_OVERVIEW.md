@@ -1,5 +1,7 @@
 # ORACLE project idea
 
+This document records the original planning or integration baseline. See the [current roadmap](../ORACLE_ROADMAP.md) for current development information.
+
 ## Current stage
 
 Early development. The browser interface and local backend foundation now work; model setup and AI responses remain deferred. The wider feature scope is still being reviewed. See [development status](../DEVELOPMENT_STATUS.md) for completed work and test evidence.

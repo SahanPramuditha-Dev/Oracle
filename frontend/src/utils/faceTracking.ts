@@ -8,11 +8,16 @@ export interface FaceObservation {
   relationship?: string | null;
   notes?: string;
   reason?: string | null;
+  score_margin?: number | null;
+  possible_match?: string | null;
+  public_figure?: { id: string; name: string; source: string } | null;
   box: [number,number,number,number];
   trackId?: number;
+  lastSeen?: number;
+  held?: boolean;
   quality?: { detection_score?: number };
 }
-interface Track { face: FaceObservation; hits: number; observations: number; seen: number; trackId: number }
+interface Track { face: FaceObservation; displayBox: FaceObservation['box']; hits: number; observations: number; unknownHits: number; seen: number; trackId: number }
 export class FaceConfirmation {
   private tracks: Track[] = [];
   private nextId = 1;
@@ -35,14 +40,31 @@ export class FaceConfirmation {
       const hits = face.matched && face.id ? (previous?.face.matched && previous.face.id===face.id ? previous.hits+1 : 1) : 0;
       const trackId = previous?.trackId ?? this.nextId++;
       const observations = (previous?.observations ?? 0) + 1;
-      next.push({face,hits,observations,seen:now,trackId});
+      const unknownHits = face.recognition_state === 'unknown' ? (previous?.unknownHits ?? 0) + 1 : 0;
+      const identityChanged = previous?.face.id !== face.id;
+      const displayBox = previous && !identityChanged
+        ? face.box.map((value, index) => {
+          const old = previous.displayBox[index];
+          const weight = Math.abs(value - old) <= Math.max(face.box[2], face.box[3]) * .15 ? .45 : 1;
+          return old + (value - old) * weight;
+        }) as FaceObservation['box']
+        : face.box;
+      next.push({face,displayBox,hits,observations,unknownHits,seen:now,trackId});
       // Unknown detections must persist across consecutive reads before display.
-      if (!face.matched && observations < 3) return [];
-      return [{...face,trackId,matched:face.matched && hits>=2,
+      if (!face.matched && (observations < 3 || (face.recognition_state === 'unknown' && unknownHits < 3))) return [];
+      return [{...face,box:displayBox,trackId,lastSeen:now,matched:face.matched && hits>=2,
         recognition_state:face.matched && hits<2 ? 'confirming' : face.recognition_state,
-        name:face.matched && hits<2 ? 'Confirming identity' : face.name}];
+        name:face.matched && hits<2 ? 'Confirming identity' : face.name,
+        possible_match: face.possible_match || null,
+        public_figure: face.public_figure?.id === previous?.face.public_figure?.id ? face.public_figure : null}];
     });
+    const held = faces.length === 0 ? this.tracks.filter(track =>
+      track.hits >= 2 && now - track.seen <= 450
+    ) : [];
     this.tracks = next;
+    if (held.length) return held.map(track => ({
+      ...track.face, box: track.displayBox, trackId: track.trackId, lastSeen: track.seen, held: true,
+    }));
     return output;
   }
 }

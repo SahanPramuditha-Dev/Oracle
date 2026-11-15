@@ -1,0 +1,101 @@
+.agenda-sections,
+.agenda-section {
+  display: grid;
+  gap: 8px;
+}
+
+.agenda-sections {
+  gap: 10px;
+}
+
+.agenda-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #a9bbcf;
+  font: 600 10px 'JetBrains Mono', monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agenda-item-card {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(157, 180, 211, 0.05);
+}
+
+.agenda-next-event {
+  border-inline-start: 2px solid rgba(157, 180, 211, 0.55);
+}
+
+.agenda-item-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agenda-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.agenda-item-time,
+.agenda-next-label {
+  flex-shrink: 0;
+  color: #c5d3e3;
+  font: 11px 'JetBrains Mono', monospace;
+}
+
+.agenda-item-meta,
+.agenda-empty-state {
+  color: #a9bbcf;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.agenda-item-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agenda-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agenda-status-action {
+  justify-self: start;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: #cfe2f7;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.agenda-caught-up {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 2px 4px;
+  color: var(--fg-secondary);
+  font-size: 12px;
+}
+
+.agenda-caught-up svg {
+  flex: none;
+  color: #9db4d3;
+}
+

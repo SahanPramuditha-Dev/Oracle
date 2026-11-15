@@ -23,7 +23,10 @@ def decode_image(payload):
                     raise HTTPException(415, 'Only still PNG and JPEG images are supported')
                 if source.width * source.height > MAX_PIXELS:
                     raise HTTPException(413, 'Choose an image with at most 12 megapixels')
-                oriented = ImageOps.exif_transpose(source).convert('RGBA')
+                oriented = ImageOps.exif_transpose(source)
+                if 'A' not in oriented.getbands() and 'transparency' not in oriented.info:
+                    return oriented.convert('RGB')
+                oriented = oriented.convert('RGBA')
                 background = Image.new('RGBA', oriented.size, 'white')
                 picture = Image.alpha_composite(background, oriented).convert('RGB')
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning):
@@ -65,10 +68,16 @@ class ImageReader:
                 self.engine = RapidOCR(intra_op_num_threads=2, inter_op_num_threads=1, print_verbose=False)
             lines, _ = self.engine(pixels)
             decoded, values, _, _ = cv2.QRCodeDetector().detectAndDecodeMulti(pixels)
+            qr_values = [value for value in values if value] if decoded else []
+            if not qr_values:
+                flipped_pixels = cv2.flip(pixels, 1)
+                f_decoded, f_values, _, _ = cv2.QRCodeDetector().detectAndDecodeMulti(flipped_pixels)
+                if f_decoded:
+                    qr_values = [value for value in f_values if value]
         except Exception:
             raise HTTPException(503, 'Local image reading failed. Try a clearer or smaller crop.') from None
         text = '\n'.join(str(line[1]) for line in (lines or []))
-        qr = list(dict.fromkeys(value for value in values if value)) if decoded else []
+        qr = list(dict.fromkeys(qr_values))
         return {'text': text[:12000], 'truncated': len(text) > 12000,
                 'qr': [value[:4096] for value in qr[:8]],
                 'confidence': round(sum(float(line[2]) for line in lines) / len(lines), 3) if lines else None,
@@ -76,9 +85,69 @@ class ImageReader:
                 'processing': 'local_backend', 'stored': False,
                 'elapsed_ms': round((time.perf_counter() - started) * 1000)}
 
+    def scan_qr(self, payload):
+        started = time.perf_counter()
+        picture = decode_image(payload)
+        import cv2
+        import numpy as np
+        import re
+
+        pixels = cv2.cvtColor(np.asarray(picture), cv2.COLOR_RGB2BGR)
+        h, w = pixels.shape[:2]
+        detector = cv2.QRCodeDetector()
+
+        decoded, values, points, _ = detector.detectAndDecodeMulti(pixels)
+        raw_results = [(v, p) for v, p in zip(values or [], points if points is not None else []) if v]
+        is_mirrored = False
+
+        if not raw_results:
+            flipped = cv2.flip(pixels, 1)
+            decoded, values, points, _ = detector.detectAndDecodeMulti(flipped)
+            raw_results = [(v, p) for v, p in zip(values or [], points if points is not None else []) if v]
+            if raw_results:
+                is_mirrored = True
+
+        results = []
+        for val, pts in raw_results:
+            val_clean = val.strip()
+            if not val_clean:
+                continue
+            is_url = bool(re.match(r'^(https?://|www\.)', val_clean, re.IGNORECASE))
+            url = val_clean if re.match(r'^https?://', val_clean, re.IGNORECASE) else (f'https://{val_clean}' if is_url else None)
+
+            box = None
+            if pts is not None and len(pts) >= 4:
+                try:
+                    bx, by, bw, bh = cv2.boundingRect(pts.astype(np.float32))
+                    if is_mirrored:
+                        bx = w - bx - bw
+                    box = [int(bx), int(by), int(bw), int(bh)]
+                except Exception:
+                    pass
+
+            results.append({
+                'payload': val_clean,
+                'is_url': is_url,
+                'url': url,
+                'box': box
+            })
+
+        return {
+            'found': len(results) > 0,
+            'results': results,
+            'mirrored': is_mirrored,
+            'elapsed_ms': round((time.perf_counter() - started) * 1000)
+        }
+
 
 def reading_router(reader):
     router = APIRouter(prefix='/api/v1')
+
+    @router.post('/images/qr')
+    async def scan_qr(request: Request):
+        if request.headers.get('content-type', '').split(';')[0] not in {'image/png', 'image/jpeg'}:
+            raise HTTPException(415, 'Send a still PNG or JPEG image')
+        return await run_in_threadpool(reader.scan_qr, await request.body())
 
     @router.post('/images/read')
     async def read_image(request: Request, x: int = Query(0, ge=0, le=99), y: int = Query(0, ge=0, le=99),

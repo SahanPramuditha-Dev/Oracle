@@ -1,0 +1,125 @@
+.presence-card {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 14px 10px;
+  background: var(--bg-pill);
+  border: 1px solid var(--border-hairline);
+  border-radius: 12px;
+  backdrop-filter: blur(16px);
+  color: var(--fg, #e8ebef);
+  font: 13px Inter, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+}
+
+.presence-card-header,
+.presence-card-header h2,
+.presence-card-actions {
+  display: flex;
+  align-items: center;
+}
+
+.presence-card-header {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+}
+
+.presence-card-header h2 {
+  gap: 8px;
+  margin: 0;
+  color: var(--fg);
+  min-width: 0;
+  font: 600 13px Inter, system-ui, sans-serif;
+}
+
+.presence-card-header svg {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.presence-card-actions {
+  gap: 2px;
+  margin-inline-start: auto;
+}
+
+.presence-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.presence-card-actions .presence-card-icon {
+  width: 30px;
+  padding: 0;
+}
+
+.presence-card-actions button:hover {
+  background-color: var(--bg-pill-hover);
+  color: var(--fg);
+}
+
+.presence-card-actions button[aria-pressed='true'] {
+  background-color: var(--bg-pill-active);
+  color: var(--fg);
+}
+
+.presence-card-actions button[aria-pressed='true'] svg {
+  color: #cfe2f7;
+  fill: rgba(157, 180, 211, 0.35);
+}
+
+.presence-card :is(button, input):focus-visible {
+  outline: 2px solid #9db4d3;
+  outline-offset: 2px;
+}
+
+.presence-card-signal {
+  position: absolute;
+  inset: -1px;
+  border: 1px solid #9db4d3;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: presence-card-signal 420ms ease-out both;
+}
+
+.presence-value-change {
+  animation: presence-value-change 220ms ease-out both;
+}
+
+@keyframes presence-card-signal {
+  from { opacity: 0.48; }
+  to { opacity: 0; }
+}
+
+@keyframes presence-value-change {
+  from { opacity: 0.48; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .presence-card-signal,
+  .presence-value-change {
+    animation: none;
+  }
+
+  .presence-card-signal {
+    display: none;
+  }
+}

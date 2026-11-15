@@ -63,3 +63,11 @@ def test_empty_frame():
     result = detector([row([320,320,10,10],confidence=.1)]).detect(Image.new('RGB',(640,480)))
     assert result['detections'] == []
     assert result['person_count'] == 0
+
+
+def test_detection_only_skips_encoding_masks_without_changing_boxes():
+    proto = np.ones((32,160,160), dtype=np.float32)
+    d = detector([row([320,320,320,160], segment=True)], proto)
+    result = d.detect(Image.new('RGB',(1280,640)), include_masks=False)
+    assert result['detections'][0]['box'] == [320,160,640,320]
+    assert 'mask' not in result['detections'][0]

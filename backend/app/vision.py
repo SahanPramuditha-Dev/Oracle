@@ -17,6 +17,10 @@ def vision_router(detector: ObjectDetector, ollama=None, everyday=None):
     router = APIRouter(prefix='/api/v1/vision')
     segmenter = ObjectDetector(MODEL_PATH.with_name('yolov8n-seg.onnx'))
     object_lock = asyncio.Lock()
+    detection_slots = asyncio.Semaphore(2)
+
+    def detect_payload(engine, payload, confidence, segment):
+        return engine.detect(decode_image(payload), confidence, include_masks=segment)
     everyday = everyday or EverydayObjectDetector()
 
     @router.post('/detect')
@@ -28,17 +32,20 @@ def vision_router(detector: ObjectDetector, ollama=None, everyday=None):
         content_type = request.headers.get('content-type', '').split(';')[0]
         if content_type not in {'image/png', 'image/jpeg'}:
             raise HTTPException(415, 'Send a still PNG or JPEG image')
-        payload = await request.body()
-        picture = decode_image(payload)
-        engine = segmenter if segment else detector
+        engine = (detector if detector.supports_masks else segmenter) if segment else detector
+        if detection_slots.locked():
+            raise HTTPException(429, 'Live vision is busy; retry with a newer frame')
         try:
-            return await run_in_threadpool(engine.detect, picture, confidence)
+            async with detection_slots:
+                payload = await request.body()
+                return await run_in_threadpool(detect_payload, engine, payload, confidence, segment)
         except FileNotFoundError:
             raise HTTPException(503, 'Local vision model is missing') from None
 
     @router.get('/objects/capabilities')
     def object_capabilities():
         return {'open_vocabulary':everyday.available,'classes':everyday.classes,
+                'live_model':detector.model_path.name,'live_classes':detector.class_names,
                 'closeups':True,'local_description':ollama is not None,'processing':'local'}
 
     @router.post('/objects/identify')
@@ -47,10 +54,10 @@ def vision_router(detector: ObjectDetector, ollama=None, everyday=None):
         if content_type not in {'image/png', 'image/jpeg'}:
             raise HTTPException(415, 'Send a still PNG or JPEG image')
         payload = await request.body()
-        picture = decode_image(payload)
         if object_lock.locked():
             raise HTTPException(429, 'Object recognition is already running; try again shortly')
         async with object_lock:
+            picture = await run_in_threadpool(decode_image, payload)
             result = None
             persons = []
             if everyday.available:
@@ -109,7 +116,7 @@ def vision_router(detector: ObjectDetector, ollama=None, everyday=None):
         if content_type not in {'image/png', 'image/jpeg'}:
             raise HTTPException(415, 'Send a still PNG or JPEG image')
         payload = await request.body()
-        decode_image(payload)
+        await run_in_threadpool(decode_image, payload)
         try:
             answer = await ollama.analyze_image(payload, prompt)
         except ProviderError as err:

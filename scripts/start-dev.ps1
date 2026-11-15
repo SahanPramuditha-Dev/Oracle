@@ -8,8 +8,9 @@ foreach ($oraclePort in @(8000)) {
     }
 }
 if (Get-Command ollama -ErrorAction SilentlyContinue) {
-    if (-not (Get-NetTCPConnection -LocalPort 11434 -State Listen -ErrorAction SilentlyContinue)) {
-        Write-Host 'Starting local Ollama server on 127.0.0.1:11434...'
+    if (-not (Get-NetTCPConnection -LocalPort 11420, 11434 -State Listen -ErrorAction SilentlyContinue)) {
+        Write-Host 'Starting local Ollama server on 127.0.0.1:11420...'
+        $env:OLLAMA_HOST = "127.0.0.1:11420"
         Start-Process -FilePath "ollama" -ArgumentList "serve" -WindowStyle Hidden
         Start-Sleep -Seconds 2
     }
@@ -21,4 +22,4 @@ if (Test-Path -LiteralPath (Join-Path $oracleProject 'data/postgresql/PG_VERSION
     if ($LASTEXITCODE -ne 0) { throw 'Could not start the local records database.' }
 }
 Write-Host 'ORACLE backend: running at http://127.0.0.1:8000. Press Ctrl+C to stop.'
-& $oraclePython -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --app-dir (Join-Path $oracleProject 'backend')
+& $oraclePython -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --app-dir (Join-Path $oracleProject 'backend')

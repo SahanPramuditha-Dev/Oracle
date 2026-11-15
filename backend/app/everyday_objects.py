@@ -43,13 +43,17 @@ class EverydayObjectDetector:
         # This export already applies sigmoid. Applying it again creates false
         # detections around 0.5 even on blank images, despite the model card text.
         self.custom_model=Path(model_path) if model_path else None
-        self.detector=ObjectDetector(self.custom_model or self.root/'yolov8s-worldv2.onnx',class_names=self.classes)
+        # Prefer the more capable local model for held objects. This slow path
+        # is independent of the lightweight live camera and face tracking.
+        preferred=self.root/'yolov8l-worldv2.onnx'
+        self.object_model=self.custom_model or (preferred if preferred.is_file() else self.root/'yolov8s-worldv2.onnx')
+        self.detector=ObjectDetector(self.object_model,class_names=self.classes)
         self._lock=threading.Lock()
         self._ready=self.custom_model is not None
     @property
     def available(self):
         if self.custom_model:return self.custom_model.is_file()
-        return all((self.root/n).is_file() for n in ['yolov8s-worldv2.onnx','clip-text.onnx','clip-tokenizer.json'])
+        return self.object_model.is_file() and all((self.root/n).is_file() for n in ['clip-text.onnx','clip-tokenizer.json'])
     def _prepare(self):
         if self._ready:return
         if not self.available:raise FileNotFoundError('Run scripts/prepare_object_models.ps1 to install local object models')

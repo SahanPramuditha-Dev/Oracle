@@ -88,7 +88,11 @@ export function ObjectRecognitionPanel({video,stream,paused,showControls=true}:{
     {showControls && <><div className="camera-object-controls">
       <button type="button" disabled={busy || paused} onClick={()=>void identify()}>Identify object</button>
       <label><input type="checkbox" checked={automatic} onChange={e=>{setAutomatic(e.target.checked);localStorage.setItem('oracle_held_objects',String(e.target.checked));}}/>Auto identify</label>
-      <label>Object view<select aria-label="Object view" value={view} onChange={e=>setView(e.target.value as typeof view)}><option value="frame">Automatic close-ups</option><option value="center">Center close-up</option></select></label>
+      <fieldset className="camera-object-view">
+        <legend>Object view</legend>
+        <label><input type="radio" name="object-view" value="frame" checked={view==='frame'} onChange={()=>setView('frame')}/>Automatic close-ups</label>
+        <label><input type="radio" name="object-view" value="center" checked={view==='center'} onChange={()=>setView('center')}/>Center close-up</label>
+      </fieldset>
     </div>
     <p className="camera-object-hint">Automatic close-ups scan the scene and smaller regions. For tiny objects, choose Center close-up and hold the object in the middle of the camera view.</p></>}
   </section>;

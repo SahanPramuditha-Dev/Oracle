@@ -1,0 +1,44 @@
+.oracle-briefing {
+  width: min(25rem, calc(100vw - 2rem));
+  max-height: min(70vh, 42rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid #73839e55;
+  border-radius: 1rem;
+  background: #111823f5;
+  color: #eef3fb;
+  box-shadow: 0 12px 30px #0005;
+  font-size: .875rem;
+  pointer-events: auto;
+}
+.oracle-briefing header, .oracle-briefing-actions {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.oracle-briefing header { justify-content: space-between; }
+.oracle-briefing h2 { margin: 0; font-size: 1rem; }
+.oracle-briefing p { margin: .65rem 0; line-height: 1.4; }
+.oracle-briefing-actions { margin-top: .6rem; }
+.oracle-briefing button, .oracle-briefing input, .oracle-briefing select {
+  font: inherit;
+  color: #eef3fb;
+  border: 1px solid #73839e70;
+  border-radius: .5rem;
+  background: #1a2535;
+  padding: .36rem .55rem;
+}
+.oracle-briefing button { cursor: pointer; }
+.oracle-briefing button[aria-pressed="true"] { border-color: #a6bfed; }
+.oracle-briefing input[type="number"] { width: 4rem; }
+
+@media (max-width: 1100px) {
+  .oracle-intelligence-left-dock.oracle-briefing-dock {
+    display: flex;
+    left: 1rem;
+    width: auto;
+  }
+  .oracle-briefing-dock > .presence-card { display: none; }
+}
+

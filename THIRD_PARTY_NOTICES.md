@@ -58,7 +58,7 @@ The UI loads [Google Fonts](https://fonts.google.com/) (Inter and JetBrains
 Mono) from `fonts.googleapis.com` when network access is available. Replace
 these imports with locally hosted fonts if a fully offline build is required.
 
-The archived [`dormant.html`](dormant.html) page loads
+The archived `dormant.html` page loads
 [Three.js r128](https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js)
 from cdnjs and uses the same Google Fonts. It is a standalone dormant visual
 page, not part of the Vite frontend runtime. Its CDN dependency is intentionally
@@ -129,3 +129,5 @@ limit and privacy terms:
    deployment or redistribution of model files.
 
 This notice is an engineering attribution record, not legal advice.
+
+- ZXing-C++ barcode decoder (Apache-2.0). [Upstream license](https://github.com/zxing-cpp/zxing-cpp/blob/master/LICENSE)

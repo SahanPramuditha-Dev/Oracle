@@ -1,5 +1,7 @@
 # ORACLE zero cost technology and architecture
 
+This document records the original planning or integration baseline. See the [current roadmap](ORACLE_ROADMAP.md) for current development information.
+
 Updated 3 November 2026. Proposed starting design, subject to a small feasibility check on the development laptop. No application implementation is claimed complete.
 
 Implementation update: the gateway and interface now work, and the user has explicitly enabled Gemini cloud text conversation while Ollama is deferred. This is a temporary exception to the local-only starting plan below. See [development status](DEVELOPMENT_STATUS.md) for tested behaviour, credential handling and request limits.
@@ -15,7 +17,7 @@ The local assistant and approved memory should work without internet after requi
 | Area | Starting choice | Use and timing |
 |---|---|---|
 | Interface | React, TypeScript and Vite | Chat, controls, camera preview and memory cards; Phase 1 |
-| Styling | Plain CSS with shared colour tokens | Adapt existing dark cyan and teal references; Phase 1 |
+| Styling | Plain CSS with shared colour tokens | Obsidian Glass design tokens in Presence.css; see [Design System](DESIGN_SYSTEM.md) |
 | Backend | Python, FastAPI, Uvicorn and Pydantic | Validated requests, sessions and registered actions; Phase 1 |
 | Communication | REST first; WebSocket for streaming | Records and uploads through REST; response and status events through WebSocket |
 | Local language inference | Ollama with one small compatible local model | Phase 2; choose model after RAM and latency checks |

@@ -1,6 +1,6 @@
 # ORACLE full-scope feature and scenario audit
 
-**5 November currency note:** The counts and feature rows below describe the 4 November snapshot. The replacement UI is now backend-connected, and newer code includes local providers, richer vision/people modules and additional desktop controls. Do not report the historical counts as a fresh audit. Current bounded integration evidence is in [frontend/backend integration](FRONTEND_BACKEND_INTEGRATION.md); three additional acceptance checks cover sleep cancellation, camera denial and backend recovery. Hardware and full journey acceptance remain separate. Phase 8 expansion should first check those newer implementations, then address absent sourced search/document workflows.
+This audit records the 4 November 2026 baseline. See the [current roadmap](ORACLE_ROADMAP.md) for subsequent implementation and acceptance, including Atlas, Companion, and research.
 
 Checked 4 November 2026 against the registers, backend routes, frontend modules and current acceptance evidence. This is a documentation/source audit, not an additional execution of every scenario.
 
@@ -105,6 +105,15 @@ These are entry counts, not a weighted completion percentage or estimates of rem
 | L10 | Trip logging | Not implemented | No dedicated implementation found in the current product modules/routes. | 10: maps and travel |
 | L11 | Arrival time prediction | Not implemented | No dedicated implementation found in the current product modules/routes. | 10: maps and travel |
 | L12 | Leave time suggestions | Not implemented | No dedicated implementation found in the current product modules/routes. | 10: maps and travel |
+| L13 | Smart location search & geocoding | Not implemented | OpenStreetMap/Nominatim NL search specified in MAPS_AND_LOCATION_INTELLIGENCE.md | 10: maps and travel |
+| L14 | Multi-route comparison | Not implemented | OSRM/Valhalla alternative routing specified in MAPS_AND_LOCATION_INTELLIGENCE.md | 10: maps and travel |
+| L15 | Voice navigation control | Not implemented | Faster-Whisper/Kokoro voice navigation specified in MAPS_AND_LOCATION_INTELLIGENCE.md | 10: maps and travel |
+| L16 | Live traffic & delay overlays | Not implemented | Congestion overlays specified in MAPS_AND_LOCATION_INTELLIGENCE.md | 10: maps and travel |
+| L17 | Destination weather overlay | Not implemented | Weather layer specified in MAPS_AND_LOCATION_INTELLIGENCE.md | 10: maps and travel |
+| L18 | Multi-stop route optimization | Not implemented | Multi-waypoint TSP optimization specified in MAPS_AND_LOCATION_INTELLIGENCE.md | 10: maps and travel |
+| L19 | 3D geographic exploration | Not implemented | MapLibre + Three.js 3D extrusions specified in MAPS_AND_LOCATION_INTELLIGENCE.md | 10: maps and travel |
+| L20 | Emergency medical navigation | Not implemented | Emergency ER lock-on specified in MAPS_AND_LOCATION_INTELLIGENCE.md | 10: maps and travel |
+| L21 | Journey and commute briefings | Not implemented | Calendar + live transit synthesis specified in MAPS_AND_LOCATION_INTELLIGENCE.md | 10: maps and travel |
 | R01 | Context based suggestions | Not implemented | No dedicated implementation found in the current product modules/routes. | 14: proactive assistance |
 | R02 | Preparation prompts | Not implemented | No dedicated implementation found in the current product modules/routes. | 14: proactive assistance |
 | R03 | Last seen item prompts | Not implemented | No dedicated implementation found in the current product modules/routes. | 14: proactive assistance |

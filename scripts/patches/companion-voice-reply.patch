@@ -1,0 +1,26 @@
+diff --git a/app/src/main/java/dev/oracle/companion/MainActivity.kt b/app/src/main/java/dev/oracle/companion/MainActivity.kt
+--- a/app/src/main/java/dev/oracle/companion/MainActivity.kt
++++ b/app/src/main/java/dev/oracle/companion/MainActivity.kt
+@@ -330,11 +330,20 @@
+                 operation {
+                     try {
+                         val body = JSONObject().put("id", UUID.randomUUID().toString())
+                             .put("text", spoken).put("mode", "quick")
+-                        val response = withContext(Dispatchers.IO) { api.call("chat", body) }
++                        val response = withContext(Dispatchers.IO) {
++                            try {
++                                api.call("chat", body)
++                            } catch (_: java.io.IOException) {
++                                api.invalidateRoute()
++                                api.call("status")
++                                api.call("chat", body)
++                            }
++                        }
+                         setHistory(response)
+                         if (voiceSession) {
+-                            val reply = messages.lastOrNull()?.takeIf { it.role == "model" }?.text
++                            val reply = response.optJSONObject("reply")?.optString("text")?.takeIf { it.isNotBlank() }
++                                ?: messages.lastOrNull()?.takeIf { it.role == "model" }?.text
+                                 ?: error("Oracle returned no reply.")
+                             voiceCaption = reply
+                             voicePhase = "Speaking…"

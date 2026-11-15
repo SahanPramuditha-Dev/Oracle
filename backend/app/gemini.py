@@ -1,12 +1,14 @@
 """Bounded text-only Gemini adapter. Credentials never enter response payloads."""
 import os
 import re
-import ssl
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 from dotenv import dotenv_values
+
+from .behavior import ReplyPreferences, conversation_instruction
+from .tls import verified_tls
 
 ENV_PATH = Path(__file__).resolve().parents[1] / '.env'
 
@@ -32,7 +34,7 @@ class Gemini:
             raise ValueError('GEMINI_MODEL must be a Gemini model identifier')
         return cls(key=key, model=model)
 
-    async def answer(self, text, history):
+    async def answer(self, text, history, *, reply_preferences: ReplyPreferences | None = None):
         contents = [{'role': item.role, 'parts': [{'text': item.text}]} for item in history]
         while contents and contents[0]['role'] != 'user':
             contents.pop(0)
@@ -46,19 +48,13 @@ class Gemini:
                 normalized.append({'role': content['role'], 'parts': list(content['parts'])})
         contents = normalized
         payload = {
-            'systemInstruction': {'parts': [{'text': (
-                'You are ORACLE, a concise and helpful personal assistant. '
-                'This version can only converse using the supplied text. '
-                'You cannot open applications, read files, browse the web, use a camera, '
-                'create reminders or save memories. Never claim you performed such actions. '
-                'Be clear about uncertainty and ask for clarification when needed.'
-            )}]},
+            'systemInstruction': {'parts': [{'text': conversation_instruction(reply_preferences)}]},
             'contents': contents,
             'generationConfig': {'maxOutputTokens': 512, 'temperature': 0.6},
         }
         try:
             # Use the OS trust store, including trusted Windows certificates; never disable TLS verification.
-            async with httpx.AsyncClient(verify=ssl.create_default_context(), timeout=30) as client:
+            async with httpx.AsyncClient(verify=verified_tls(system_trust=True), timeout=30) as client:
                 response = await client.post(
                     f'https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent',
                     headers={'x-goog-api-key': self.key}, json=payload)
